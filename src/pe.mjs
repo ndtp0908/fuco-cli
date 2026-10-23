@@ -13,6 +13,7 @@ import { runConnect } from './commands/connect.mjs';
 import { runUpdate } from './commands/update.mjs';
 import { runRules } from './commands/rules.mjs';
 import { runBackup, runRestore } from './commands/backup.mjs';
+import { runLessons } from './commands/lessons.mjs';
 import { listSessions } from './lib/session.mjs';
 import { VERSION } from './lib/version.mjs';
 
@@ -30,6 +31,7 @@ Dung:
   pe connect export       tao ma ket noi ma hoa de cai pe o may khac trong 1 lan dan
   pe backup / pe restore  dong goi + khoi phuc toan bo trang thai pe (file ma hoa)
   pe rules                dong bo bo nho project giua pe va Cline (.muserules)
+  pe lessons              bai hoc kinh nghiem tu cac loi da gap (xem/ghi tay/xoa)
   pe update               tu cap nhat ban .exe moi nhat
   pe chat --resume        mo lai phien chat gan nhat (phien tu luu o ~/.pe/sessions)
   pe sessions             liet ke cac phien chat da luu
@@ -181,6 +183,21 @@ kem huong dan cap nhat thu cong.`,
 De file backup o noi an toan (Drive). Mat khau qua prompt hoac env
 PE_BACKUP_PASSWORD. Khac ma ket noi (chi cau hinh): backup gom ca lich su.`,
 
+  lessons: `pe lessons — bai hoc kinh nghiem tu cac loi da gap (v0.8)
+
+Co che: khi agent pham loi trong pe do / pe chat nhung tu sua xong,
+pe tu rut bai hoc ngan (Loi / Goc re / Lan sau), hoi anh duyet roi moi
+luu vao .pe/lessons.md (project) hoac ~/.pe/lessons.md (toan cuc).
+Cac phien sau bai hoc duoc nap lai vao system prompt de tranh lap lai;
+bai hoc gap lai lan nua se tang bo dem (x2, x3...) va duoc uu tien hon.
+
+  pe lessons                        liet ke bai hoc (project + toan cuc)
+  pe lessons add "<nd>" [--global]  ghi tay 1 bai hoc (luu ngay)
+  pe lessons rm <project|global> <so>  xoa 1 bai hoc
+
+Trong pe chat: /lesson <noi dung> de ghi tay ngay trong luc chat.
+Dong bo sang Cline: pe rules export (kem theo section bai hoc).`,
+
   rules: `pe rules — bo nho project dung chung pe + Cline
 
   pe rules            trang thai .pe/context.md va .muserules
@@ -252,6 +269,7 @@ const COMMANDS = {
   restore: runRestore,
   update: runUpdate,
   rules: runRules,
+  lessons: runLessons,
   tasks: runTasks,
   result: runResult,
   sessions: runSessions,

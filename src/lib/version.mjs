@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-export const FALLBACK_VERSION = '0.7.0';
+export const FALLBACK_VERSION = '0.8.0';
 
 export const VERSION = (() => {
   try {

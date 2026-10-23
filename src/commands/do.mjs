@@ -1,10 +1,11 @@
 // `pe do "<viec>"` — giao 1 viec cho agent lam ngay trong project hien tai:
 // model tu doc/sua file, chay lenh theo muc duyet (approval).
 import readline from 'node:readline';
-import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
+import { loadConfig, missingFields } from '../lib/config.mjs';
 import { createToolRunner } from '../lib/tools.mjs';
 import { runAgent, AGENT_SYSTEM } from '../lib/agent.mjs';
 import { currentTimeLine } from '../lib/now.mjs';
+import { loadContextWithLessons, distillLessons, reviewAndSaveLessons } from '../lib/lessons.mjs';
 
 export function printAgentEvent(type, data) {
   if (type === 'tool') console.log(`  [tool] ${data.desc} ...`);
@@ -12,17 +13,40 @@ export function printAgentEvent(type, data) {
   else if (type === 'note') console.log(data);
 }
 
+/** readline dung chung cho ca duyet tool va duyet bai hoc trong `pe do`. */
+let sharedRl = null;
+function doRl() {
+  if (!sharedRl) sharedRl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  return sharedRl;
+}
+
 /** Hoi xac nhan qua terminal; stdin khong phai TTY thi mac dinh tu choi. */
 export function makeConfirm() {
-  let rl = null;
   return (desc) => new Promise((resolve) => {
     if (!process.stdin.isTTY) {
       console.log(`  [can duyet] ${desc} — khong phai terminal nen tu choi (dung --yolo hoac chat de duyet tay).`);
       resolve(false);
       return;
     }
-    if (!rl) rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    rl.question(`  Cho phep ${desc}? (y/N) `, (a) => resolve(/^y(es)?$/i.test(a.trim())));
+    doRl().question(`  Cho phep ${desc}? (y/N) `, (a) => resolve(/^y(es)?$/i.test(a.trim())));
+  });
+}
+
+/**
+ * Hoi y/N cho viec LUU BAI HOC (khong nguy hiem nen doc ca stdin pipe:
+ * nguoi dung go "y" la duyet; EOF/khong tra loi = khong luu).
+ */
+export function askYesNoShared(question) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (v) => { if (!settled) { settled = true; resolve(v); } };
+    const rl = doRl();
+    rl.once('close', () => done(false));
+    try {
+      rl.question(question, (a) => done(/^y(es)?$/i.test(String(a).trim())));
+    } catch {
+      done(false);
+    }
   });
 }
 
@@ -52,7 +76,7 @@ export async function runDo(args = []) {
     return;
   }
   const level = yolo ? 3 : ([1, 2, 3].includes(approval) ? approval : cfg.approval);
-  const ctx = await loadProjectContext();
+  const ctx = await loadContextWithLessons();
   const runner = createToolRunner({ root: process.cwd(), approval: level, confirm: makeConfirm() });
   const messages = [
     { role: 'system', content: AGENT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
@@ -60,8 +84,18 @@ export async function runDo(args = []) {
   ];
   console.log(`pe do (muc duyet ${level}${level === 3 ? ' — yolo' : ''}${web ? ', web: bat' : ''}): ${task}\n`);
   try {
-    const { text } = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, web });
+    const { text, incidents, stopped } = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, web });
     console.log(`\npe: ${text}`);
+    // Rut bai hoc: chi khi viec THANH CONG ma giua duong co loi da sua.
+    if (incidents?.length && !stopped) {
+      try {
+        const candidates = await distillLessons(cfg, { task, incidents, finalText: text });
+        if (candidates.length) {
+          console.log('\nTrong luc lam viec pe co pham loi roi tu sua duoc. Pe rut ra bai hoc sau — anh duyet thi pe moi luu lai cho lan sau:');
+          await reviewAndSaveLessons({ candidates, ask: askYesNoShared });
+        }
+      } catch { /* rut bai hoc loi thi bo qua — khong chan viec chinh */ }
+    }
   } catch (e) {
     console.error(`Loi: ${e.message}`);
     process.exitCode = 1;

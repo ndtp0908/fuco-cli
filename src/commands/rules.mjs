@@ -20,6 +20,7 @@ export const CLINE_PACK = `
 - Respect the project's existing style, naming and structure.
 - Keep replies concise: summaries and diffs, not whole files.
 - Project memory: read .pe/context.md at the start of a task if it exists.
+- Project lessons: read .pe/lessons.md at the start of a task if it exists — past mistakes and how to avoid repeating them; the most-repeated lessons matter most.
 <!-- /PE-CLINE-PACK -->
 `;
 
@@ -36,9 +37,12 @@ export async function runRules(args = []) {
   if (!sub || sub === 'status') {
     const hasCtx = await exists(ctxPath);
     const hasRules = await exists(rulesPath);
+    const lessonsPath = path.join(cwd, '.pe', 'lessons.md');
+    const hasLessons = await exists(lessonsPath);
     console.log(`.pe/context.md : ${hasCtx ? 'co (' + (await fs.readFile(ctxPath, 'utf8')).length + ' ky tu)' : 'chua co — pe init --project de tao'}`);
+    console.log(`.pe/lessons.md : ${hasLessons ? 'co (' + (await fs.readFile(lessonsPath, 'utf8')).length + ' ky tu) — xem: pe lessons' : 'chua co — bai hoc se duoc de xuat khi agent pham loi roi sua xong'}`);
     console.log(`.muserules    : ${hasRules ? 'co (' + (await fs.readFile(rulesPath, 'utf8')).length + ' ky tu)' : 'chua co — pe rules install de cai bo quy tac chuan'}`);
-    console.log('\npe tu nap ca 2 file nay lam ngu canh project. Dong bo: pe rules export | import');
+    console.log('\npe tu nap ca context.md, lessons.md va .muserules lam ngu canh project. Dong bo: pe rules export | import (export kem theo bai hoc)');
     return;
   }
 
@@ -62,9 +66,25 @@ export async function runRules(args = []) {
       return;
     }
     if (await exists(rulesPath)) await backupFile(rulesPath);
-    const text = await fs.readFile(ctxPath, 'utf8');
+    let text = await fs.readFile(ctxPath, 'utf8');
+    // Kem theo bai hoc kinh nghiem (neu co) trong 1 section rieng co
+    // marker — export lai thi thay the section cu, khong nhan doi.
+    const lessonsPath = path.join(cwd, '.pe', 'lessons.md');
+    let lessonNote = '';
+    if (await exists(lessonsPath)) {
+      const { readLessons } = await import('../lib/lessons.mjs');
+      const entries = await readLessons(lessonsPath);
+      if (entries.length) {
+        const items = entries
+          .map((e) => `- [${e.tag}${e.count > 1 ? ` x${e.count}` : ''}] Loi: ${e.loi} | Lan sau: ${e.lanSau}`)
+          .join('\n');
+        const section = `\n\n<!-- PE-LESSONS (dong bo boi pe rules export) -->\n## Lessons learned (from pe — tranh lap lai cac loi nay)\n\n${items}\n<!-- /PE-LESSONS -->\n`;
+        text = text.replace(/<!-- PE-LESSONS[\s\S]*?<!-- \/PE-LESSONS -->/, '').replace(/\s+$/, '') + section;
+        lessonNote = ` Kem theo ${entries.length} bai hoc tu .pe/lessons.md.`;
+      }
+    }
     await fs.writeFile(rulesPath, text, 'utf8');
-    console.log(`Da dong bo .pe/context.md -> .muserules (${text.length} ky tu). Tu gio Cline va pe doc chung 1 bo nho.`);
+    console.log(`Da dong bo .pe/context.md -> .muserules (${text.length} ky tu).${lessonNote} Tu gio Cline va pe doc chung 1 bo nho.`);
     return;
   }
 

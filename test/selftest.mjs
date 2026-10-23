@@ -136,6 +136,22 @@ function startMock() {
           } else if (typeof lastContent === 'string' && lastContent.includes('MARKER-FILE-CONTENT')) {
             reply = 'MOCK-FILE-OK';
           }
+          // --- v0.8 lessons: distill + may trang thai loi->sua->xong ---
+          if (sysText.includes('PE-DISTILL')) {
+            reply = JSON.stringify([{ loi: 'Chay lenh false lam hong buoc sau', gocRe: 'Khong kiem tra exit code cua lenh truoc', lanSau: 'Kiem tra Exit: 0 sau moi lenh quan trong truoc khi lam tiep', tag: 'run_bash', scope: 'project' }]);
+          }
+          if (sysText.includes('Kiem tra Exit: 0 sau moi lenh quan trong')) reply = 'LESSON-INJECTED-OK';
+          {
+            // May trang thai LESSON: marker nam o tin user DAU (allText),
+            // con trang thai Exit chi doc o tin CUOI (lastStr).
+            const lastStr = typeof lastContent === 'string' ? lastContent : '';
+            const hasMarker = allText.includes('LESSON-TASK') || allText.includes('LESSONCHAT');
+            if (hasMarker && !sysText.includes('PE-DISTILL')) {
+              if (lastStr.includes('Ket qua tool') && lastStr.includes('Exit: 0')) reply = 'LESSON-DONE';
+              else if (lastStr.includes('Ket qua tool') && lastStr.includes('Exit: 1')) reply = '```json\n{"tool":"run_bash","args":{"command":"true"}}\n```';
+              else if (!lastStr.includes('Ket qua tool')) reply = '```json\n{"tool":"run_bash","args":{"command":"false"}}\n```';
+            }
+          }
           if (parsed?.web === true) reply = 'WEB-FLAG-OK';
           if (parsed?.stream) {
             res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -511,6 +527,44 @@ async function main() {
   ok('chat /web on -> luot hoi co web:true', r.code === 0 && r.out.includes('Tim kiem web: BAT') && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 160)}`);
   r = await runCli(['do', 'WEBDO viec can web', '--web'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projLoop });
   ok('do --web gui web:true o lan goi dau', r.code === 0 && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 120)}`);
+
+  // 28. Lessons (v0.8): agent loi->sua->xong, distill, duyet y moi luu,
+  // phien sau tu nap lai; dedup tang x2; pe lessons list/rm; /lesson.
+  const projLesson = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-lesson-'));
+  await fs.mkdir(path.join(projLesson, '.pe'), { recursive: true });
+  await fs.writeFile(path.join(projLesson, '.pe', 'context.md'), 'LESSONCTX project\n');
+  const lessonFile = path.join(projLesson, '.pe', 'lessons.md');
+  r = await runCli(['do', 'LESSON-TASK sua loi build', '--yolo'], menv, 'y\n', { cwd: projLesson });
+  let lessonText = '';
+  try { lessonText = await fs.readFile(lessonFile, 'utf8'); } catch { /* chua co */ }
+  ok('do loi->sua->xong: de xuat bai hoc + duyet y thi luu file', r.code === 0 && r.out.includes('Da luu bai hoc moi') && lessonText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code} out=${r.out.slice(-300)} file=${lessonText.slice(0, 120)}`);
+  r = await runCli(['ask', 'hoi thu xem'], menv, '', { cwd: projLesson });
+  ok('phien sau: bai hoc tu nap vao system prompt', r.code === 0 && r.out.includes('LESSON-INJECTED-OK'), `code=${r.code} out=${r.out.slice(0, 120)}`);
+  r = await runCli(['do', 'LESSON-TASK sua loi build', '--yolo'], menv, 'y\n', { cwd: projLesson });
+  lessonText = await fs.readFile(lessonFile, 'utf8');
+  ok('gap lai loi tuong tu: dedup gop 1 bai hoc thanh x2', r.code === 0 && lessonText.includes('x2') && (lessonText.match(/^## /gm) || []).length === 1, `file=${lessonText.slice(0, 200)}`);
+  r = await runCli(['lessons'], menv, '', { cwd: projLesson });
+  ok('pe lessons liet ke duoc bai hoc', r.code === 0 && r.out.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code}`);
+  r = await runCli(['lessons', 'rm', 'project', '1'], menv, '', { cwd: projLesson });
+  ok('pe lessons rm xoa duoc', r.code === 0 && r.out.includes('Da xoa bai hoc'), `code=${r.code} out=${r.out.slice(0, 100)}`);
+  lessonText = await fs.readFile(lessonFile, 'utf8');
+  ok('sau rm: file khong con bai hoc do', !lessonText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), '');
+
+  const projChatLesson = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-chatlesson-'));
+  await fs.mkdir(path.join(projChatLesson, '.pe'), { recursive: true });
+  await fs.writeFile(path.join(projChatLesson, '.pe', 'context.md'), 'CHATLESSONCTX\n');
+  r = await runCli(['chat'], menv, '/lesson Khong dung ham X nua\n/exit\n', { cwd: projChatLesson });
+  let chatLessonText = '';
+  try { chatLessonText = await fs.readFile(path.join(projChatLesson, '.pe', 'lessons.md'), 'utf8'); } catch { /* chua co */ }
+  ok('chat /lesson ghi tay luu ngay', r.code === 0 && r.out.includes('Da luu bai hoc') && chatLessonText.includes('Khong dung ham X nua'), `code=${r.code} out=${r.out.slice(0, 200)}`);
+
+  const projChatRev = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-chatrev-'));
+  await fs.mkdir(path.join(projChatRev, '.pe'), { recursive: true });
+  await fs.writeFile(path.join(projChatRev, '.pe', 'context.md'), 'CHATREVCTX\n');
+  r = await runCli(['chat'], { ...menv, PE_APPROVAL: '3' }, 'LESSONCHAT lam viec\ny\n/exit\n', { cwd: projChatRev });
+  let revText = '';
+  try { revText = await fs.readFile(path.join(projChatRev, '.pe', 'lessons.md'), 'utf8'); } catch { /* chua co */ }
+  ok('chat: agent loi->sua xong thi de xuat bai hoc, go y la luu', r.code === 0 && r.out.includes('Bai hoc de xuat') && r.out.includes('Da luu bai hoc') && revText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code} out=${r.out.slice(-400)} file=${revText.slice(0, 120)}`);
 
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);

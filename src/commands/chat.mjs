@@ -3,7 +3,8 @@
 // che do agent dung tools trong project (mac dinh bat), duyet 3 muc, undo.
 import readline from 'node:readline';
 import fs from 'node:fs';
-import { loadConfig, missingFields, loadProjectContext, saveConfig } from '../lib/config.mjs';
+import { loadConfig, missingFields, saveConfig } from '../lib/config.mjs';
+import { loadContextWithLessons, distillLessons, saveLesson, formatLessonForReview } from '../lib/lessons.mjs';
 import { chatCompletionStream, listModels, freeOnly, PeError } from '../lib/api.mjs';
 import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
 import { createToolRunner } from '../lib/tools.mjs';
@@ -26,6 +27,7 @@ Lenh trong chat:
   /attach          xem dinh kem dang cho gui
   /tools [on|off]  bat/tat che do agent (dung tools trong project)
   /web [on|off]    bat/tat tim kiem web (worker tu tim + chen nguon vao cau tra loi)
+  /lesson <nd>     ghi tay 1 bai hoc kinh nghiem (luu ngay; tu phien sau pe tu tranh loi do)
   /approval [1|2|3]  muc duyet tool: 1 hoi tat ca, 2 vua (mac dinh), 3 tu do
   /undo [file]     khoi phuc file ve ban truoc khi pe sua
   /session         xem phien chat hien tai (id, so tin)
@@ -43,7 +45,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     process.exitCode = 2;
     return;
   }
-  const ctx = await loadProjectContext();
+  const ctx = await loadContextWithLessons();
   let currentModel = cfg.model;
   let approval = cfg.approval;
   let toolsOn = true;
@@ -75,6 +77,11 @@ export async function runChat(args = [], input = process.stdin, output = process
   // runAgent dung no de phat hien lap ca XUYEN LUOT — truoc day moi luot
   // go "tiep tuc" la bo dem buoc reset tu dau nen doc lai tu dau mai.
   const agentSeen = new Map();
+  // Hang doi duyet bai hoc (v0.8): sau 1 luot agent co loi da sua xong,
+  // pe de xuat bai hoc va cho duyet bang CHINH dong nhap tiep theo
+  // (y = luu, n = bo qua, all = luu het) — khong dung rl.question vi
+  // xung dot voi vong for-await chuyen doc dong cua chat.
+  let lessonReview = null;
 
   const rl = readline.createInterface({ input, output, prompt: 'pe> ' });
   let rlClosed = false;
@@ -143,7 +150,7 @@ export async function runChat(args = [], input = process.stdin, output = process
         onToken: (t) => { buf += t; output.write(t); },
       });
       output.write('\n');
-      return buf;
+      return { text: buf, incidents: [], stopped: null };
     }
     let buf = '';
     let decided = false; // true = chac chan khong phai tool JSON -> da in truc tiep
@@ -174,22 +181,22 @@ export async function runChat(args = [], input = process.stdin, output = process
       if (e instanceof PeError && (e.kind === 'auth' || e.kind === 'model')) throw e;
       // Stream gap giua chung -> chay agent khong stream
       const runner = createToolRunner({ root: process.cwd(), approval, confirm });
-      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal, seen: agentSeen, web: webOn });
-      console.log(text);
-      return text;
+      const r = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal, seen: agentSeen, web: webOn });
+      console.log(r.text);
+      return { text: r.text, incidents: r.incidents || [], stopped: r.stopped };
     }
     if (decided) {
       output.write('\n');
-      return buf;
+      return { text: buf, incidents: [], stopped: null };
     }
     const jt = extractJsonToolCall(buf);
     if (!jt) {
       console.log(buf);
-      return buf;
+      return { text: buf, incidents: [], stopped: null };
     }
     // La loi goi tool: chay vong lap agent, dung san cau tra loi dau lam buoc 1.
     const runner = createToolRunner({ root: process.cwd(), approval, confirm });
-    const { text } = await runAgent({
+    const r = await runAgent({
       cfg,
       model: currentModel,
       messages,
@@ -200,8 +207,8 @@ export async function runChat(args = [], input = process.stdin, output = process
       seen: agentSeen,
       web: webOn,
     });
-    console.log(text);
-    return text;
+    console.log(r.text);
+    return { text: r.text, incidents: r.incidents || [], stopped: r.stopped };
   }
 
   function agentEvent(type, data) {
@@ -213,6 +220,34 @@ export async function runChat(args = [], input = process.stdin, output = process
   for await (const rawLine of rl) {
     const line = rawLine.trim();
     if (!line) { safePrompt(); continue; }
+
+    // Dang cho duyet bai hoc: dong nhap nay la cau tra loi duyet.
+    if (lessonReview && line !== '/exit' && line !== '/quit') {
+      const a = line.toLowerCase();
+      const saveOne = async (e) => {
+        const r = await saveLesson(e, e.scope);
+        console.log(r.action === 'merged'
+          ? `  Da gop vao bai hoc cu (bay gio x${r.entry.count}) — ${r.file}`
+          : `  Da luu bai hoc — ${r.file}`);
+      };
+      if (a === 'all' || a === 'tat ca') {
+        for (const e of lessonReview.queue) await saveOne(e);
+        lessonReview = null;
+        console.log('  Da luu xong cac bai hoc de xuat.');
+      } else if (a === 'y' || a === 'yes' || a === 'luu') {
+        await saveOne(lessonReview.queue.shift());
+        if (!lessonReview.queue.length) lessonReview = null;
+      } else {
+        lessonReview.queue.shift();
+        console.log('  (bo qua bai hoc nay)');
+        if (!lessonReview.queue.length) lessonReview = null;
+      }
+      if (lessonReview) {
+        console.log(formatLessonForReview(lessonReview.queue[0], lessonReview.total - lessonReview.queue.length, lessonReview.total));
+        console.log('  Go "y" de luu, "n" de bo qua, "all" de luu tat ca:');
+      }
+      safePrompt(); continue;
+    }
 
     if (line === '/exit' || line === '/quit') break;
     if (line === '/help') { console.log(HELP); safePrompt(); continue; }
@@ -273,6 +308,18 @@ export async function runChat(args = [], input = process.stdin, output = process
       if (v === 'on') webOn = true;
       else if (v === 'off') webOn = false;
       console.log(`Tim kiem web: ${webOn ? 'BAT (worker tu tim + chen nguon)' : 'TAT'}`);
+      safePrompt(); continue;
+    }
+    if (line.startsWith('/lesson')) {
+      const text = line.slice('/lesson'.length).trim();
+      if (!text) {
+        console.log('Dung: /lesson <noi dung bai hoc> — ghi tay 1 bai hoc (luu ngay). Xem tat ca bai hoc: thoat chat roi chay `pe lessons`.');
+      } else {
+        const r = await saveLesson({ loi: 'Bai hoc ghi tay', gocRe: '', lanSau: text, tag: 'manual' }, 'project');
+        console.log(r.action === 'merged'
+          ? `Da gop vao bai hoc tuong tu (bay gio x${r.entry.count}) — ${r.file}`
+          : `Da luu bai hoc — ${r.file}`);
+      }
       safePrompt(); continue;
     }
     if (line.startsWith('/approval')) {
@@ -346,10 +393,24 @@ export async function runChat(args = [], input = process.stdin, output = process
     process.stdout.write('pe: ');
     turnAbort = new AbortController();
     try {
-      const text = await replyTurn(turnAbort.signal);
+      const turn = await replyTurn(turnAbort.signal);
+      const text = turn.text;
       history[history.length - 1] = { role: 'user', content: shadow };
       history.push({ role: 'assistant', content: text });
       staged = { files: [], images: [] };
+      // Rut bai hoc: luot nay agent co loi nhung da sua xong -> de xuat
+      // bai hoc, cho duyet bang dong nhap tiep theo (xem lessonReview).
+      if (turn.incidents?.length && !turn.stopped && !lessonReview) {
+        try {
+          const candidates = await distillLessons({ ...cfg, model: currentModel }, { task: shadow, incidents: turn.incidents, finalText: text });
+          if (candidates.length) {
+            lessonReview = { queue: [...candidates], total: candidates.length };
+            console.log('\nTrong luc lam viec pe co pham loi roi tu sua duoc. Bai hoc de xuat:');
+            console.log(formatLessonForReview(candidates[0], 0, candidates.length));
+            console.log('  Go "y" de luu, "n" de bo qua, "all" de luu tat ca:');
+          }
+        } catch { /* rut bai hoc loi thi bo qua */ }
+      }
     } catch (e) {
       process.stdout.write('\n');
       history[history.length - 1] = { role: 'user', content: shadow };

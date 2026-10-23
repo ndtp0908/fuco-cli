@@ -113,6 +113,21 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
   // theo do chi ton cong va nhieu ngu canh.
   let webPending = !!web && !firstReply;
 
+  // Su co phuc vu rut bai hoc (v0.8): ghi lai cac loi tool THAT SU
+  // (prefix LOI: hoac run_bash exit != 0), toi da 8, khong trung. Luot
+  // chay ket thuc thanh cong (stopped === null) + co incidents nghia la
+  // "loi -> sua -> xong": ben goi (do/chat) se rut bai hoc tu day.
+  const incidents = [];
+  const isErrorResult = (name, result) =>
+    result.startsWith('LOI:') || (name === 'run_bash' && /\nExit: [1-9]/.test(`\n${result}`));
+  const pushIncident = (name, args, result) => {
+    const firstLine = result.split('\n')[0].slice(0, 200);
+    if (incidents.some((i) => i.tool === name && i.error.split('\n')[0] === firstLine)) return;
+    if (incidents.length < 8) {
+      incidents.push({ tool: name, desc: describeToolCall(name, args), error: String(result).slice(0, 400) });
+    }
+  };
+
   for (;;) {
     if (!reply) {
       reply = await chatCompletion(cfg, { model, messages, tools: TOOL_DEFS, signal, web: webPending });
@@ -133,14 +148,14 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
 
     if (!calls.length) {
       messages.push({ role: 'assistant', content: reply.text });
-      return { text: reply.text, steps, stopped: null };
+      return { text: reply.text, steps, stopped: null, incidents };
     }
 
     if (steps >= maxSteps) {
       const msg = `Da dung ${maxSteps} luot tool trong 1 phien lam viec. Pe dung lai tai day — anh go "tiep tuc" de pe lam tiep tu cho nay (cac tool da chay van con trong ngu canh, pe khong lam lai tu dau).`;
       note(msg);
       messages.push({ role: 'assistant', content: msg });
-      return { text: msg, steps, stopped: 'cap' };
+      return { text: msg, steps, stopped: 'cap', incidents };
     }
 
     const results = [];
@@ -156,6 +171,7 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
       steps++;
       if (onEvent) onEvent('tool', { name: call.name, args: call.args, desc: describeToolCall(call.name, call.args) });
       const result = String(await runner.run(call.name, call.args));
+      if (isErrorResult(call.name, result)) pushIncident(call.name, call.args, result);
       if (onEvent) onEvent('result', { name: call.name, summary: result.split('\n')[0].slice(0, 160) });
       batchSeen.set(key, result);
       // Cham tien trien: goi moi hoac ket qua khac lan truoc = co thong
@@ -174,7 +190,7 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
       note(msg);
       messages.push({ role: 'user', content: `Ket qua tool:\n${results.join('\n\n')}` });
       messages.push({ role: 'assistant', content: msg });
-      return { text: msg, steps, stopped: 'loop' };
+      return { text: msg, steps, stopped: 'loop', incidents };
     }
 
     messages.push({ role: 'user', content: `Ket qua tool:\n${results.join('\n\n')}\n\n(Neu can them tool thi goi tiep; xong thi tra loi ket qua cuoi cho nguoi dung.)` });

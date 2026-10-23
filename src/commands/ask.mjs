@@ -4,7 +4,8 @@
 // Trong prompt co the go @duong-dan de dinh kem file/anh do.
 // Neu vua co prompt vua pipe stdin: noi dung stdin duoc gui kem
 // nhu mot block file co nhan "stdin".
-import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
+import { loadConfig, missingFields } from '../lib/config.mjs';
+import { loadContextWithLessons } from '../lib/lessons.mjs';
 import { chatCompletionStream, PeError } from '../lib/api.mjs';
 import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
 import { currentTimeLine } from '../lib/now.mjs';
@@ -109,7 +110,7 @@ export async function runAsk(args) {
   const desc = describeAttachments(att);
   if (desc) console.error(desc.replace('Da gui kem', 'Dinh kem'));
 
-  const ctx = await loadProjectContext();
+  const ctx = await loadContextWithLessons();
   const messages = [];
   const sysParts = [];
   if (system) sysParts.push(system);

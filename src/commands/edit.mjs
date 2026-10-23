@@ -4,7 +4,8 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import readline from 'node:readline';
-import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
+import { loadConfig, missingFields } from '../lib/config.mjs';
+import { loadContextWithLessons } from '../lib/lessons.mjs';
 import { chatCompletion } from '../lib/api.mjs';
 import { formatDiff } from '../lib/diff.mjs';
 import { backupFile, restoreLatest, latestBackup } from '../lib/backup.mjs';
@@ -66,7 +67,7 @@ export async function runEdit(args = []) {
     process.exitCode = 2;
     return;
   }
-  const ctx = await loadProjectContext();
+  const ctx = await loadContextWithLessons();
   const messages = [
     { role: 'system', content: EDIT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
     { role: 'user', content: `Yeu cau: ${instruction}\n\nFile ${path.basename(abs)} hien tai:\n\`\`\`\n${original}\n\`\`\`` },
