@@ -74,6 +74,8 @@ Trong chat còn có: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model
 
 ## Mượt mà hơn (v0.4.0 — 3 gói cải tiến)
 
+**v0.5.0:** `pe backup [--out]` / `pe restore <file> [--force]` — đóng gói toàn bộ trạng thái (cấu hình + mọi phiên chat + việc đã giao) thành 1 file `.pebak` mã hoá bằng mật khẩu; máy mới restore là nguyên trạng.
+
 **Máy công ty (gói A):**
 - `pe connect export` → sinh **mã kết nối** mã hoá bằng mật khẩu; sang máy mới chỉ cần `pe init --code <mã>` là xong cấu hình, khỏi gõ URL/secret dài.
 - `pe update [--check]` → tự kiểm tra bản mới qua manifest `release/pe-update.json`, tải về, **verify SHA256** rồi mới thay exe (bản cũ giữ thành `.old`).
@@ -90,7 +92,7 @@ Trong chat còn có: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model
 ## Kiểm tra
 
 ```bash
-npm test   # 54 ca: config/env/project override, mock worker (sai secret, model non-free,
+npm test   # 57 ca: config/env/project override, mock worker (sai secret, model non-free,
            # mất mạng), streaming SSE, đính kèm file/ảnh/@mention/stdin, help chi tiết,
            # pe edit + undo, agent pe do (đọc→sửa file), glob list_files, chat đa-tool JSON
 ```

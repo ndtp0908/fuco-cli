@@ -429,6 +429,22 @@ async function main() {
   }
   ok('chat tu noi phien cua project (4 tin, khong tao phien thua)', r.code === 0 && resumedOk, `code=${r.code} files=${sessFiles2.length}`);
 
+  // 25. De xuat 3: backup -> restore sang home moi
+  const bakFile = path.join(tmpHome, 'test.pebak');
+  r = await runCli(['backup', '--out', bakFile], { ...menvSess, PE_BACKUP_PASSWORD: 'pw-backup-1' });
+  let bakOk = false;
+  try { bakOk = (await fs.readFile(bakFile, 'utf8')).startsWith('PE1.'); } catch {}
+  ok('backup tao file .pebak ma hoa', r.code === 0 && bakOk, `code=${r.code} out=${r.out.slice(0, 80)}`);
+  const homeR = path.join(tmpHome, 'home-restore');
+  r = await runCli(['restore', bakFile, '--force'], { PE_HOME: homeR, PE_BACKUP_PASSWORD: 'pw-backup-1' });
+  let restoredCfg = null;
+  try { restoredCfg = JSON.parse(await fs.readFile(path.join(homeR, '.pe', 'config.json'), 'utf8')); } catch {}
+  let restoredSessions = 0;
+  try { restoredSessions = (await fs.readdir(path.join(homeR, '.pe', 'sessions'))).filter((f) => f.endsWith('.json')).length; } catch {}
+  ok('restore khoi phuc config + phien', r.code === 0 && restoredCfg?.proxySecret === SECRET && restoredSessions >= 1, `code=${r.code} sessions=${restoredSessions} out=${r.out.slice(0, 80)}`);
+  r = await runCli(['restore', bakFile, '--force'], { PE_HOME: homeR, PE_BACKUP_PASSWORD: 'sai-pass' });
+  ok('restore sai mat khau bi chan', r.code === 1, `code=${r.code}`);
+
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);
 

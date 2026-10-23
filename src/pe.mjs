@@ -12,6 +12,7 @@ import { runAssign, runTasks, runResult } from './commands/assign.mjs';
 import { runConnect } from './commands/connect.mjs';
 import { runUpdate } from './commands/update.mjs';
 import { runRules } from './commands/rules.mjs';
+import { runBackup, runRestore } from './commands/backup.mjs';
 import { listSessions } from './lib/session.mjs';
 import { VERSION } from './lib/version.mjs';
 
@@ -27,6 +28,7 @@ Dung:
   pe undo [file]          khoi phuc file ve ban truoc khi pe sua
   pe assign "<viec>"      giao viec dai cho pe qua hang doi (xem pe tasks / pe result)
   pe connect export       tao ma ket noi ma hoa de cai pe o may khac trong 1 lan dan
+  pe backup / pe restore  dong goi + khoi phuc toan bo trang thai pe (file ma hoa)
   pe rules                dong bo bo nho project giua pe va Cline (.muserules)
   pe update               tu cap nhat ban .exe moi nhat
   pe chat --resume        mo lai phien chat gan nhat (phien tu luu o ~/.pe/sessions)
@@ -167,6 +169,15 @@ Nguon manifest mac dinh o repo GitHub cua pe (doi bang PE_UPDATE_URL).
 Chi tu thay file khi chay dang .exe (SEA); chay qua node se bao ban moi
 kem huong dan cap nhat thu cong.`,
 
+  backup: `pe backup / pe restore — mang ca "nha" sang may moi
+
+  pe backup [--out <file.pebak>]   dong goi cau hinh + phien chat + viec da
+                                   giao thanh 1 file ma hoa bang mat khau
+  pe restore <file> [--force]      khoi phuc lai nguyen trang
+
+De file backup o noi an toan (Drive). Mat khau qua prompt hoac env
+PE_BACKUP_PASSWORD. Khac ma ket noi (chi cau hinh): backup gom ca lich su.`,
+
   rules: `pe rules — bo nho project dung chung pe + Cline
 
   pe rules            trang thai .pe/context.md va .muserules
@@ -234,6 +245,8 @@ const COMMANDS = {
   undo: runUndo,
   assign: runAssign,
   connect: runConnect,
+  backup: runBackup,
+  restore: runRestore,
   update: runUpdate,
   rules: runRules,
   tasks: runTasks,
