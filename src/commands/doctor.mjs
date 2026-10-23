@@ -1,5 +1,5 @@
 // `pe doctor` — kiem tra moi truoc khi dung: node, config, ket noi worker, auth, model.
-import { loadConfig, missingFields } from '../lib/config.mjs';
+import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
 import { apiFetch, PeError } from '../lib/api.mjs';
 
 const OK = '\u2713';
@@ -27,6 +27,14 @@ export async function runDoctor() {
   line(miss.length === 0, miss.length === 0
     ? `workerUrl + proxySecret da co${cfg._meta.fromEnv.workerUrl || cfg._meta.fromEnv.proxySecret ? ' (mot phan tu bien moi truong)' : ''}`
     : `thieu: ${miss.join(', ')} — chay \`pe init\` hoac dat bien moi truong`);
+
+  // 3b. Project hien tai (.pe/)
+  if (cfg._meta.projectDir) {
+    const ctx = await loadProjectContext();
+    line(true, `project: ${cfg._meta.projectDir}${cfg._meta.projectModel ? ` (model rieng: ${cfg._meta.projectModel})` : ''}${ctx ? ` + context.md (${ctx.text.length} ky tu)` : ''}`);
+  } else {
+    console.log('  - chua co .pe/ cho project nay (pe init --project de tao)');
+  }
 
   // 4. Model hop le (worker chi cho :free)
   line(String(cfg.model).endsWith(':free'), `model mac dinh "${cfg.model}"${String(cfg.model).endsWith(':free') ? '' : ' — worker se tu choi (403)'}`);

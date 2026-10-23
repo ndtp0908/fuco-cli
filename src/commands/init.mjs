@@ -2,6 +2,8 @@
 // Ghi vao ~/.pe/config.json, chmod 600.
 import readline from 'node:readline';
 import { DEFAULT_MODEL, loadConfig, normalizeUrl, saveConfig } from '../lib/config.mjs';
+import { promises as fsp } from 'node:fs';
+import path from 'node:path';
 import { apiFetch } from '../lib/api.mjs';
 
 function ask(rl, q, def) {
@@ -36,7 +38,9 @@ function askHidden(q) {
   });
 }
 
-export async function runInit() {
+export async function runInit(args = []) {
+  if (args.includes('--project')) return runProjectInit();
+
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
     console.log('— pe init: cau hinh ket noi toi fuco-agent worker —\n');
@@ -77,3 +81,37 @@ export async function runInit() {
     throw e;
   }
 }
+
+const CONTEXT_TEMPLATE = `# Ngu canh project
+
+Viet o day nhung dieu pe can biet ve project nay: muc dich, stack cong nghe,
+quy uoc code, lenh build/test, thu muc quan trong, dieu can tranh...
+Pe se tu nap file nay vao moi cau hoi khi ban dung pe trong thu muc project
+(hoac thu muc con cua no).
+`;
+
+/** `pe init --project` — tao .pe/config.json + .pe/context.md ngay tai project hien tai. */
+async function runProjectInit() {
+  const cfg = await loadConfig();
+  const dir = path.join(process.cwd(), '.pe');
+  await fsp.mkdir(dir, { recursive: true });
+  const cfgPath = path.join(dir, 'config.json');
+  let existed = false;
+  try { await fsp.stat(cfgPath); existed = true; } catch { /* chua co */ }
+  if (!existed) {
+    await fsp.writeFile(cfgPath, JSON.stringify({ model: cfg.model, approval: cfg.approval }, null, 2) + '\n', 'utf8');
+    console.log(`Da tao ${cfgPath} (model: ${cfg.model}, muc duyet: ${cfg.approval})`);
+  } else {
+    console.log(`Da co san ${cfgPath} — giu nguyen.`);
+  }
+  const ctxPath = path.join(dir, 'context.md');
+  try {
+    await fsp.stat(ctxPath);
+    console.log(`Da co san ${ctxPath} — giu nguyen.`);
+  } catch {
+    await fsp.writeFile(ctxPath, CONTEXT_TEMPLATE, 'utf8');
+    console.log(`Da tao ${ctxPath} — mo ra va viet ngu canh project vao do.`);
+  }
+  console.log('\nTu gio dung pe o thu muc nay (hoac thu muc con) se tu ap dung cau hinh + ngu canh tren.');
+}
+

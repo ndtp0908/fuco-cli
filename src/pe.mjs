@@ -6,6 +6,8 @@ import { runChat } from './commands/chat.mjs';
 import { runInit } from './commands/init.mjs';
 import { runDoctor } from './commands/doctor.mjs';
 import { runModel } from './commands/model.mjs';
+import { runEdit, runUndo } from './commands/edit.mjs';
+import { runDo } from './commands/do.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -16,15 +18,20 @@ const HELP = `pe v${VERSION} — CLI tro ly coding (noi voi pe qua fuco-agent wo
 
 Dung:
   pe init                 cau hinh lan dau (worker URL + proxy secret + model)
-  pe ask "cau hoi..."     hoi 1 cau, in tra loi roi thoat (co --file/--image de dinh kem)
-  pe chat                 tro chuyen lien tuc (/help /model /file /image /clear /exit)
+  pe init --project       tao .pe/config.json + .pe/context.md cho project hien tai
+  pe ask "cau hoi..."     hoi 1 cau (streaming), co --file/--image de dinh kem
+  pe chat                 tro chuyen lien tuc + agent dung tools (mac dinh bat)
+  pe do "<viec>"          giao 1 viec cho agent lam trong project (--yolo = duyet muc 3)
+  pe edit <file> "<yc>"   sua 1 file theo yeu cau, xem diff roi moi ghi
+  pe undo [file]          khoi phuc file ve ban truoc khi pe sua
   pe doctor               kiem tra cau hinh + ket noi worker
   pe model [show|list|<id>]  xem / doi model mac dinh (phai la :free)
   pe help [lenh]          xem huong dan tong, hoac chi tiet 1 lenh
   pe <lenh> --help        xem chi tiet cua lenh do
 
 Cau hinh la TOAN CUC (~/.pe/config.json): pe init mot lan la dung duoc
-o moi thu muc project. Bien moi truong ghi de config file khi co:
+o moi thu muc project. Trong 1 project co the co .pe/config.json (ghi de
+model/muc duyet) + .pe/context.md (bo nho project, pe tu nap moi cau hoi). Bien moi truong ghi de config file khi co:
   PE_WORKER_URL, PE_PROXY_SECRET, PE_MODEL, PE_APPROVAL, PE_HOME
 `;
 
@@ -90,6 +97,51 @@ model bi chan). Chay lenh nay khi pe ask bao loi.
 Vi du:
   pe doctor`,
 
+  do: `pe do — giao 1 viec cho agent lam ngay trong project
+
+Agent tu doc/sua file, tim kiem, chay lenh trong thu muc project hien tai
+bang tools (read_file/write_file/edit_file/list_files/grep/run_bash).
+Moi lan ghi file deu backup truoc — pe undo khoi phuc duoc.
+
+Cu phap:
+  pe do "<viec>" [--yolo] [--approval 1|2|3]
+
+Muc duyet:
+  1  hoi truoc moi thao tac sua/chay lenh
+  2  (mac dinh) doc + ghi trong project tu do, lenh la thi hoi
+  3  (--yolo) tu do het, chi chan lenh pha hoai
+
+Vi du:
+  pe do "them xu ly chia cho 0 vao Calculator.cs roi build thu"
+  pe do "tim cho nao dung HttpClient chua dispose" --approval 1`,
+
+  edit: `pe edit — sua 1 file theo yeu cau, xem diff truoc khi ghi
+
+Cu phap:
+  pe edit <file> "<yeu cau>" [--yes] [--dry] [--model <id>]
+
+  --dry    chi xem diff de xuat, khong ghi
+  --yes    ghi ngay khong hoi (file cu van duoc backup)
+
+Quy trinh: pe de xuat ban sua -> hien diff -> anh duyet -> ghi.
+Khoi phuc ban cu: pe undo <file>
+
+Vi du:
+  pe edit src\\Calculator.cs "them kiem tra chia cho 0"
+  pe edit src\\Helper.cs "doi ten bien cho de hieu" --dry`,
+
+  undo: `pe undo — khoi phuc file ve ban truoc khi pe sua
+
+Cu phap:
+  pe undo [file]     khong ghi file thi khoi phuc file vua sua gan nhat
+
+Moi lan pe ghi/sua file (edit, agent write_file/edit_file) deu tu backup
+ban cu vao ~/.pe/backups nen undo luc nao cung duoc.
+
+Vi du:
+  pe undo src\\Calculator.cs
+  pe undo`,
+
   model: `pe model — xem / doi model mac dinh
 
 Cu phap:
@@ -106,6 +158,9 @@ const COMMANDS = {
   init: runInit,
   ask: runAsk,
   chat: runChat,
+  do: runDo,
+  edit: runEdit,
+  undo: runUndo,
   doctor: runDoctor,
   model: runModel,
 };

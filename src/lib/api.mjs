@@ -67,21 +67,117 @@ export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs =
   return data;
 }
 
-/** Goi chat completions, tra ve text cua assistant. */
-export async function chatCompletion(cfg, { model, messages, temperature, maxTokens } = {}) {
-  const useModel = model || cfg.model;
+function checkModel(useModel) {
   if (!useModel || !String(useModel).endsWith(':free')) {
     throw new PeError('model', `Model "${useModel}" khong hop le: worker chi cho phep model ket thuc bang ":free".`);
   }
+}
+
+function parseToolCalls(message) {
+  const raw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
+  return raw.map((tc) => {
+    let args = {};
+    try { args = JSON.parse(tc?.function?.arguments || '{}'); } catch { /* giu {} */ }
+    return { id: tc?.id || '', name: tc?.function?.name || '', args };
+  }).filter((tc) => tc.name);
+}
+
+/** Goi chat completions, tra ve text + tool calls (neu model dung native tools). */
+export async function chatCompletion(cfg, { model, messages, temperature, maxTokens, tools } = {}) {
+  const useModel = model || cfg.model;
+  checkModel(useModel);
   const body = { model: useModel, messages };
   if (temperature !== undefined) body.temperature = temperature;
   if (maxTokens !== undefined) body.max_tokens = maxTokens;
-  const data = await apiFetch(cfg, '/api/chat', { method: 'POST', body, timeoutMs: 120000 });
-  const text = data?.choices?.[0]?.message?.content;
-  if (typeof text !== 'string') {
+  if (tools) body.tools = tools;
+  const data = await apiFetch(cfg, '/api/chat', { method: 'POST', body, timeoutMs: 180000 });
+  const message = data?.choices?.[0]?.message;
+  const text = typeof message?.content === 'string' ? message.content : '';
+  const toolCalls = parseToolCalls(message);
+  if (!text && !toolCalls.length) {
     throw new PeError('http', 'Worker tra ve dinh dang la (thieu choices[0].message.content).');
   }
-  return { text, model: useModel, raw: data };
+  return { text, toolCalls, model: useModel, raw: data };
+}
+
+/**
+ * Goi chat completions dang STREAM (SSE cua OpenRouter qua worker).
+ * onToken(chunk) duoc goi cho tung mau text. Tra ve toan van khi xong.
+ * Loi auth/model/http duoc phan loai giong apiFetch truoc khi stream mo.
+ */
+export async function chatCompletionStream(cfg, { model, messages, onToken, timeoutMs = 240000 } = {}) {
+  const useModel = model || cfg.model;
+  checkModel(useModel);
+  if (!cfg.workerUrl) throw new PeError('config', 'Chua co workerUrl. Chay `pe init` de cau hinh.');
+  if (!cfg.proxySecret) throw new PeError('config', 'Chua co proxySecret. Chay `pe init` de cau hinh.');
+  let res;
+  try {
+    res = await fetch(cfg.workerUrl + '/api/chat', {
+      method: 'POST',
+      headers: { 'x-proxy-auth': cfg.proxySecret, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: useModel, messages, stream: true }),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    const msg = e?.cause?.code || e?.name || 'network error';
+    throw new PeError('network', `Khong noi duoc toi worker (${msg}). Kiem tra URL va mang.`);
+  }
+  const ct = (res.headers.get('content-type') || '').toLowerCase();
+  if (!ct.includes('text/event-stream')) {
+    // Worker tu choi truoc khi stream (sai secret / model...) — doc body de phan loai.
+    const data = await readBody(res);
+    if (isFake404(res, data)) {
+      throw new PeError('auth', 'Worker tra ve trang 404 gia — sai proxy secret HOAC sai worker URL. Chay `pe init` de nhap lai.');
+    }
+    const m = data?.error?.message || data?.message || res.statusText || '';
+    if (res.status === 403 && /only :free models/i.test(m)) {
+      throw new PeError('model', `Worker tu choi: chi cho phep model :free. ${m}`);
+    }
+    if (!res.ok) throw new PeError('http', `Worker tra loi ${res.status}: ${m}`, res.status);
+    // Khong phai stream nhung la JSON hop le (worker/model bo qua stream):
+    const text = data?.choices?.[0]?.message?.content;
+    if (typeof text === 'string') {
+      if (onToken) onToken(text);
+      return { text, model: useModel };
+    }
+    throw new PeError('http', 'Worker tra ve dinh dang la khi stream.');
+  }
+  let full = '';
+  let buf = '';
+  const decoder = new TextDecoder();
+  const handleLine = (line) => {
+    const t = line.trim();
+    if (!t.startsWith('data:')) return;
+    const payload = t.slice(5).trim();
+    if (!payload || payload === '[DONE]') return;
+    try {
+      const json = JSON.parse(payload);
+      const delta = json?.choices?.[0]?.delta?.content;
+      if (typeof delta === 'string' && delta) {
+        full += delta;
+        if (onToken) onToken(delta);
+      }
+    } catch { /* chunk vo, bo qua */ }
+  };
+  try {
+    for await (const chunk of res.body) {
+      buf += decoder.decode(chunk, { stream: true });
+      let idx;
+      while ((idx = buf.indexOf('\n')) >= 0) {
+        handleLine(buf.slice(0, idx));
+        buf = buf.slice(idx + 1);
+      }
+    }
+    if (buf) handleLine(buf);
+  } catch (e) {
+    if (!full) {
+      const msg = e?.cause?.code || e?.name || 'network error';
+      throw new PeError('network', `Stream bi dut (${msg}).`);
+    }
+    // Da co mot phan noi dung — tra ve phan do, kem ghi chu.
+    full += '\n[stream bi dut giua chung]';
+  }
+  return { text: full, model: useModel };
 }
 
 /** Lay danh sach model tu worker. */

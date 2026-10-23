@@ -4,8 +4,8 @@
 // Trong prompt co the go @duong-dan de dinh kem file/anh do.
 // Neu vua co prompt vua pipe stdin: noi dung stdin duoc gui kem
 // nhu mot block file co nhan "stdin".
-import { loadConfig, missingFields } from '../lib/config.mjs';
-import { chatCompletion, PeError } from '../lib/api.mjs';
+import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
+import { chatCompletionStream, PeError } from '../lib/api.mjs';
 import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
 
 /**
@@ -107,13 +107,21 @@ export async function runAsk(args) {
   const desc = describeAttachments(att);
   if (desc) console.error(desc.replace('Da gui kem', 'Dinh kem'));
 
+  const ctx = await loadProjectContext();
   const messages = [];
-  if (system) messages.push({ role: 'system', content: system });
+  const sysParts = [];
+  if (system) sysParts.push(system);
+  if (ctx) sysParts.push('Ngu canh project:\n' + ctx.text);
+  if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
   messages.push({ role: 'user', content: buildUserContent(prompt, att) });
 
   try {
-    const { text } = await chatCompletion(cfg, { model, messages });
-    console.log(text);
+    await chatCompletionStream(cfg, {
+      model,
+      messages,
+      onToken: (t) => process.stdout.write(t),
+    });
+    process.stdout.write('\n');
   } catch (e) {
     console.error(`Loi: ${e.message}`);
     if (att.images.length && /support image input/i.test(e.message)) {

@@ -36,16 +36,21 @@ export async function loadConfig(home) {
     file = {};
   }
   const env = process.env;
+  // Config theo project: .pe/config.json o thu muc hien tai (hoac thu muc cha)
+  // ghi de model/approval cua config toan cuc. Secret KHONG doc tu project.
+  const proj = await loadProjectConfig();
   const workerUrl = normalizeUrl(cleanStr(env.PE_WORKER_URL) || cleanStr(file.workerUrl));
   const proxySecret = cleanStr(env.PE_PROXY_SECRET) || cleanStr(file.proxySecret);
-  const model = cleanStr(env.PE_MODEL) || cleanStr(file.model) || DEFAULT_MODEL;
-  const approvalRaw = cleanStr(env.PE_APPROVAL) ?? file.approval;
+  const model = cleanStr(env.PE_MODEL) || proj.model || cleanStr(file.model) || DEFAULT_MODEL;
+  const approvalRaw = cleanStr(env.PE_APPROVAL) ?? proj.approval ?? file.approval;
   const approval = [1, 2, 3].includes(Number(approvalRaw)) ? Number(approvalRaw) : DEFAULT_APPROVAL;
   return {
     workerUrl, proxySecret, model, approval,
     _meta: {
       path: p,
       fileExists: fileOk,
+      projectDir: proj.dir,
+      projectModel: proj.model,
       fromEnv: {
         workerUrl: !!cleanStr(env.PE_WORKER_URL),
         proxySecret: !!cleanStr(env.PE_PROXY_SECRET),
@@ -53,6 +58,52 @@ export async function loadConfig(home) {
       },
     },
   };
+}
+
+/** Tim thu muc .pe gan nhat khi di len tu cwd (chua config.json hoac context.md). */
+export async function findProjectDir(startDir = process.cwd()) {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    const cand = path.join(dir, '.pe');
+    for (const name of ['config.json', 'context.md']) {
+      try {
+        const st = await fs.stat(path.join(cand, name));
+        if (st.isFile()) return dir;
+      } catch { /* chua co */ }
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+}
+
+/** Doc .pe/config.json cua project (chi model + approval). */
+export async function loadProjectConfig(startDir = process.cwd()) {
+  const dir = await findProjectDir(startDir);
+  if (!dir) return { dir: null };
+  let data = {};
+  try {
+    data = JSON.parse(await fs.readFile(path.join(dir, '.pe', 'config.json'), 'utf8'));
+  } catch { /* chi co context.md */ }
+  return {
+    dir,
+    model: cleanStr(data.model),
+    approval: [1, 2, 3].includes(Number(data.approval)) ? Number(data.approval) : undefined,
+  };
+}
+
+/** Bo nho project: noi dung .pe/context.md gan nhat (toi da 32 KB). */
+export async function loadProjectContext(startDir = process.cwd()) {
+  const dir = await findProjectDir(startDir);
+  if (!dir) return null;
+  const p = path.join(dir, '.pe', 'context.md');
+  try {
+    const raw = await fs.readFile(p, 'utf8');
+    const text = raw.slice(0, 32 * 1024).trim();
+    return text ? { path: p, text } : null;
+  } catch {
+    return null;
+  }
 }
 
 /** Ghi config, chmod 600 vi chua secret. */

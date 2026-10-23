@@ -34,28 +34,55 @@ function startMock() {
           return res.end(JSON.stringify({ data: [{ id: FREE_MODEL }, { id: 'pro-model' }] }));
         }
         if (req.url.startsWith('/api/chat') && req.method === 'POST') {
-          let m = null;
-          let lastContent = null;
-          try {
-            const parsed = JSON.parse(body);
-            m = parsed.model;
-            const msgs = parsed.messages || [];
-            lastContent = msgs.length ? msgs[msgs.length - 1].content : null;
-          } catch {}
+          let parsed = null;
+          try { parsed = JSON.parse(body); } catch {}
+          const m = parsed?.model;
+          const msgs = parsed?.messages || [];
+          const lastContent = msgs.length ? msgs[msgs.length - 1].content : null;
+          const sysText = msgs.filter((x) => x.role === 'system').map((x) => String(x.content || '')).join('\n');
+          const allText = msgs.map((x) => (typeof x.content === 'string' ? x.content : JSON.stringify(x.content || ''))).join('\n');
           if (!m || !String(m).endsWith(':free')) {
             res.writeHead(403, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({ error: { message: 'Access Denied: Only :free models allowed.' } }));
           }
-          // Nhan dien dinh kem de test: anh -> MOCK-IMAGE-OK,
-          // file/stdin co marker -> MOCK-FILE-OK.
           let reply = 'MOCK-REPLY-OK';
-          if (Array.isArray(lastContent)) {
+          if (sysText.includes('cong cu sua file')) {
+            const mm = String(lastContent || '').match(/```\n([\s\S]*?)\n```/);
+            const fc = mm ? mm[1] : '';
+            reply = '```\n' + fc.replace('ORIGINAL', 'EDITED') + '\n```';
+          } else if (allText.includes('Ket qua tool') && allText.includes('Da sua')) {
+            reply = 'AGENT-DONE';
+          } else if (allText.includes('Ket qua tool') && allText.includes('ORIGINAL-CONTENT')) {
+            reply = '```json\n{"tool": "edit_file", "args": {"path": "a.txt", "old_text": "ORIGINAL-CONTENT", "new_text": "EDITED-CONTENT"}}\n```';
+          } else if (typeof lastContent === 'string' && lastContent.includes('MULTI-TOOL')) {
+            reply = '{"tool": "read_file", "args": {"path": "a.txt"}}\n{"tool": "grep", "args": {"pattern": "x"}}';
+          } else if (allText.includes('Ket qua tool') && allText.includes('y.txt')) {
+            reply = 'LIST-DONE';
+          } else if (typeof lastContent === 'string' && lastContent.includes('LIST-TASK')) {
+            reply = '```json\n{"tool": "list_files", "args": {"pattern": "**/*.txt"}}\n```';
+          } else if (typeof lastContent === 'string' && lastContent.includes('AGENT-TASK')) {
+            reply = '```json\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+          } else if (sysText.includes('CTX-MARKER-123')) {
+            reply = 'CTX-OK';
+          } else if (lastContent === 'ECHO-MODEL') {
+            reply = 'MODEL=' + m;
+          } else if (Array.isArray(lastContent)) {
             const textPart = lastContent.find((x) => x.type === 'text')?.text || '';
             const hasImg = lastContent.some((x) => x.type === 'image_url' && String(x.image_url?.url || '').startsWith('data:image/'));
             if (hasImg) reply = 'MOCK-IMAGE-OK';
             else if (textPart.includes('MARKER-FILE-CONTENT')) reply = 'MOCK-FILE-OK';
           } else if (typeof lastContent === 'string' && lastContent.includes('MARKER-FILE-CONTENT')) {
             reply = 'MOCK-FILE-OK';
+          }
+          if (parsed?.stream) {
+            res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+            const third = Math.max(1, Math.ceil(reply.length / 3));
+            for (let i = 0; i < reply.length; i += third) {
+              const chunk = reply.slice(i, i + third);
+              res.write(`data: ${JSON.stringify({ choices: [{ delta: { content: chunk } }] })}\n\n`);
+            }
+            res.write('data: [DONE]\n\n');
+            return res.end();
           }
           res.writeHead(200, { 'Content-Type': 'application/json' });
           return res.end(JSON.stringify({
@@ -71,10 +98,11 @@ function startMock() {
   });
 }
 
-function runCli(args, env = {}, stdinData = '') {
+function runCli(args, env = {}, stdinData = '', opts = {}) {
   return new Promise((resolve) => {
     const p = spawn('node', [PE, ...args], {
       env: { ...process.env, ...env },
+      cwd: opts.cwd || undefined,
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     let out = '', err = '';
@@ -187,6 +215,64 @@ async function main() {
     });
     ok('ask co prompt khong treo vi stdin mo', res.code === 0 && res.out.includes('MOCK-REPLY-OK'), `code=${res.code}`);
   }
+
+  // 9. project context + config rieng theo project
+  const projCtx = path.join(tmpHome, 'proj-ctx');
+  await fs.mkdir(path.join(projCtx, '.pe'), { recursive: true });
+  await fs.writeFile(path.join(projCtx, '.pe', 'context.md'), 'Ghi chu: CTX-MARKER-123');
+  r = await runCli(['ask', 'hi'], menv, '', { cwd: projCtx });
+  ok('ask tu nap .pe/context.md cua project', r.code === 0 && r.out.includes('CTX-OK'), `code=${r.code} out=${r.out.slice(0, 80)}`);
+
+  const projCfg = path.join(tmpHome, 'proj-cfg');
+  await fs.mkdir(path.join(projCfg, '.pe'), { recursive: true });
+  await fs.writeFile(path.join(projCfg, '.pe', 'config.json'), JSON.stringify({ model: 'proj-model:free' }));
+  // Khong dat PE_MODEL o env (env ghi de ca project — dung thiet ke)
+  const menvNoModel = { PE_HOME: tmpHome, PE_WORKER_URL: mockUrl, PE_PROXY_SECRET: SECRET };
+  r = await runCli(['ask', 'ECHO-MODEL'], menvNoModel, '', { cwd: projCfg });
+  ok('.pe/config.json ghi de model', r.code === 0 && r.out.includes('MODEL=proj-model:free'), `code=${r.code} out=${r.out.slice(0, 80)}`);
+
+  // 10. pe edit + pe undo
+  const projEdit = path.join(tmpHome, 'proj-edit');
+  await fs.mkdir(projEdit, { recursive: true });
+  const ePath = path.join(projEdit, 'e.txt');
+  await fs.writeFile(ePath, 'line1\nORIGINAL\nline3\n');
+  r = await runCli(['edit', 'e.txt', 'thay ORIGINAL bang EDITED', '--yes'], menv, '', { cwd: projEdit });
+  const afterEdit = await fs.readFile(ePath, 'utf8');
+  ok('pe edit --yes ghi file da sua', r.code === 0 && afterEdit.includes('EDITED') && !afterEdit.includes('ORIGINAL'), `code=${r.code} file=${afterEdit.slice(0, 40)} out=${r.out.slice(0, 80)}`);
+  r = await runCli(['undo', 'e.txt'], menv, '', { cwd: projEdit });
+  const afterUndo = await fs.readFile(ePath, 'utf8');
+  ok('pe undo khoi phuc ban cu', r.code === 0 && afterUndo.includes('ORIGINAL'), `code=${r.code} file=${afterUndo.slice(0, 40)}`);
+
+  // 11. agent (pe do): doc file -> sua file -> tra loi xong
+  const projAgent = path.join(tmpHome, 'proj-agent');
+  await fs.mkdir(projAgent, { recursive: true });
+  const aPath = path.join(projAgent, 'a.txt');
+  await fs.writeFile(aPath, 'ORIGINAL-CONTENT');
+  r = await runCli(['do', 'AGENT-TASK doc va sua a.txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projAgent });
+  const afterAgent = await fs.readFile(aPath, 'utf8');
+  ok('pe do agent doc+sua file, tra AGENT-DONE', r.code === 0 && r.out.includes('AGENT-DONE') && afterAgent === 'EDITED-CONTENT', `code=${r.code} file=${afterAgent} out=${r.out.slice(0, 120)}`);
+
+  // 12. help cac lenh moi
+  r = await runCli(['help', 'do'], { PE_HOME: tmpHome });
+  ok('pe help do co muc duyet + vi du', r.code === 0 && r.out.includes('--yolo'), `code=${r.code}`);
+  r = await runCli(['help', 'edit'], { PE_HOME: tmpHome });
+  ok('pe help edit co --dry/--yes', r.code === 0 && r.out.includes('--dry'), `code=${r.code}`);
+
+  // 13. chat: model tra 2 object JSON tran -> van chay duoc agent
+  const projChat = path.join(tmpHome, 'proj-chat');
+  await fs.mkdir(projChat, { recursive: true });
+  await fs.writeFile(path.join(projChat, 'a.txt'), 'ORIGINAL-CONTENT');
+  r = await runCli(['chat'], menv, 'MULTI-TOOL doc a.txt\n/exit\n', { cwd: projChat });
+  ok('chat xu ly JSON tran nhieu object (agent chay tiep)', r.code === 0 && r.out.includes('AGENT-DONE'), `code=${r.code} out=${r.out.slice(0, 160)}`);
+
+  // 14. list_files glob ** dung (bat loi replace an lan nhau truoc day)
+  const projList = path.join(tmpHome, 'proj-list');
+  await fs.mkdir(path.join(projList, 'sub'), { recursive: true });
+  await fs.writeFile(path.join(projList, 'x.txt'), '1');
+  await fs.writeFile(path.join(projList, 'sub', 'y.txt'), '2');
+  await fs.writeFile(path.join(projList, 'z.md'), '3');
+  r = await runCli(['do', 'LIST-TASK liet ke file txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projList });
+  ok('list_files **/*.txt thay du 2 file (goc + sub)', r.code === 0 && r.out.includes('LIST-DONE') && r.out.includes('2 file:'), `code=${r.code} out=${r.out.slice(0, 140)}`);
 
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);

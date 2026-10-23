@@ -1,134 +1,267 @@
-// `pe chat` — che do tro chuyen lien tuc (REPL).
-// Lenh trong chat: /help /model [id] /models /file /image /attach /clear /exit
-// Dinh kem: /file <path> va /image <path> gan file cho TIN NHAN TIEP THEO,
-// hoac go @duong-dan ngay trong cau. Lich su chi luu dong mo ta dinh kem
-// (khong luu lai base64) de cac luot sau khong phai gui lai anh.
-import readline from 'node:readline/promises';
-import { stdin as input, stdout as output } from 'node:process';
-import { loadConfig, missingFields, saveConfig } from '../lib/config.mjs';
-import { chatCompletion, freeOnly, listModels } from '../lib/api.mjs';
-import { collectAttachments, expandMentions, buildUserContent, describeAttachments, readTextAttachment, readImageAttachment } from '../lib/attach.mjs';
+// `pe chat` — tro chuyen lien tuc (REPL) voi pe qua fuco-agent worker.
+// Co: streaming cau tra loi, dinh kem file/anh (/file /image @mention),
+// che do agent dung tools trong project (mac dinh bat), duyet 3 muc, undo.
+import readline from 'node:readline';
+import fs from 'node:fs';
+import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
+import { chatCompletionStream, listModels, freeOnly, PeError } from '../lib/api.mjs';
+import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
+import { createToolRunner } from '../lib/tools.mjs';
+import { runAgent, AGENT_SYSTEM, extractJsonToolCall } from '../lib/agent.mjs';
+import { restoreLatest, latestBackup } from '../lib/backup.mjs';
+import path from 'node:path';
 
-const HELP = `Lenh trong chat:
-  /help            hien bang nay
-  /model           xem model hien tai
-  /model <id>      doi model (phai la model :free) — luu vao config
-  /models          liet ke cac model :free tu worker
-  /file <path>     dinh kem file text/code cho tin nhan tiep theo
-  /image <path>    dinh kem anh cho tin nhan tiep theo (model phai co vision)
-  /attach          xem cac dinh kem dang cho gui
-  /clear           xoa lich su doan chat nay + dinh kem dang cho
-  /exit            thoat (Ctrl+C / Ctrl+D cung duoc)
-  @duong-dan       go ngay trong cau de dinh kem file/anh do`;
+const BASE_SYSTEM = 'Ban la pe — tro ly cua nguoi dung trong ung dung fuco-agent, gio dang noi chuyen qua CLI. Tra loi ngan gon, dung trong tam. Nguoi dung la coder (.NET/Angular).';
 
-export async function runChat() {
+const HELP = `
+Lenh trong chat:
+  /help            hien tro giup nay
+  /model [id]      xem / doi model (phai la :free; doi la co luu)
+  /models          liet ke model :free
+  /file <path>     dinh kem file text/code cho tin nhan TIEP THEO
+  /image <path>    dinh kem anh cho tin nhan tiep theo
+  /attach          xem dinh kem dang cho gui
+  /tools [on|off]  bat/tat che do agent (dung tools trong project)
+  /approval [1|2|3]  muc duyet tool: 1 hoi tat ca, 2 vua (mac dinh), 3 tu do
+  /undo [file]     khoi phuc file ve ban truoc khi pe sua
+  /clear           xoa lich su doan nay + dinh kem dang cho
+  /exit            thoat (hoac Ctrl+C)
+Trong cau co the go @duong-dan de dinh kem ngay file/anh do.
+`;
+
+export async function runChat(args = [], input = process.stdin, output = process.stdout) {
+  void args;
   const cfg = await loadConfig();
   const miss = missingFields(cfg);
   if (miss.length) {
-    console.error(`Thieu cau hinh: ${miss.join(', ')}. Chay \`pe init\` truoc.`);
-    process.exitCode = 1;
+    console.error(`Chua cau hinh du: thieu ${miss.join(', ')}. Chay \`pe init\` truoc.`);
+    process.exitCode = 2;
     return;
   }
-  let model = cfg.model;
-  let history = [];
-  let staged = { textBlocks: [], images: [], notes: [] };
+  const ctx = await loadProjectContext();
+  let currentModel = cfg.model;
+  let approval = cfg.approval;
+  let toolsOn = true;
+  const history = []; // user/assistant (khong chua system)
+  let staged = { files: [], images: [] }; // dinh kem cho cho tin nhan tiep theo
 
   const rl = readline.createInterface({ input, output, prompt: 'pe> ' });
-  // Khi stdin la pipe (khong phai TTY), readline tu dong sau EOF —
-  // goi rl.prompt() luc do se vang "readline was closed". Dung ban an toan nay.
   let rlClosed = false;
   rl.on('close', () => { rlClosed = true; });
-  const safePrompt = () => { if (!rlClosed) { try { safePrompt(); } catch { /* da dong */ } } };
-  console.log(`pe chat — model: ${model}\nGo "/help" de xem lenh, "/exit" de thoat.\n`);
+  const safePrompt = () => { if (!rlClosed) { try { rl.prompt(); } catch { /* da dong */ } } };
+
+  const confirm = (desc) => new Promise((resolve) => {
+    if (rlClosed) {
+      console.log(`  [can duyet] ${desc} — input da dong nen mac dinh tu choi.`);
+      resolve(false);
+      return;
+    }
+    try {
+      rl.question(`  Cho phep ${desc}? (y/N) `, (a) => resolve(/^y(es)?$/i.test(a.trim())));
+    } catch {
+      resolve(false);
+    }
+  });
+
+  console.log(`pe chat — model: ${currentModel}${ctx ? `\nDa nap ngu canh project: ${ctx.path}` : ''}`);
+  console.log('Go "/help" de xem lenh, "/exit" de thoat.\n');
   safePrompt();
 
-  for await (const raw of rl) {
-    const line = raw.trim();
+  const buildSystem = () => {
+    let s = BASE_SYSTEM;
+    if (ctx) s += `\n\nNgu canh project:\n${ctx.text}`;
+    if (toolsOn) s += `\n\n${AGENT_SYSTEM}`;
+    return s;
+  };
+
+  /**
+   * Tra loi 1 luot:
+   * - toolsOn: stream truoc KHONG tools, giu dem — neu la loi goi tool dang JSON
+   *   thi chuyen sang vong lap agent; khong phai thi in truc tiep (streaming that).
+   * - tat tools: stream truc tiep.
+   */
+  async function replyTurn() {
+    const messages = [{ role: 'system', content: buildSystem() }, ...history];
+    if (!toolsOn) {
+      let buf = '';
+      await chatCompletionStream(cfg, {
+        model: currentModel,
+        messages,
+        onToken: (t) => { buf += t; output.write(t); },
+      });
+      output.write('\n');
+      return buf;
+    }
+    let buf = '';
+    let decided = false; // true = chac chan khong phai tool JSON -> da in truc tiep
+    try {
+      await chatCompletionStream(cfg, {
+        model: currentModel,
+        messages,
+        onToken: (t) => {
+          buf += t;
+          if (!decided) {
+            const head = buf.replace(/^\s+/, '');
+            if (head.length >= 24 || head.includes('\n')) {
+              if (head.startsWith('{') || head.startsWith('```')) {
+                // Co the la loi goi tool — giu im lang, doi het stream roi xu ly.
+              } else {
+                decided = true;
+                output.write(buf);
+              }
+            }
+          } else {
+            output.write(t);
+          }
+        },
+      });
+    } catch (e) {
+      if (e instanceof PeError && (e.kind === 'auth' || e.kind === 'model')) throw e;
+      // Stream gap giua chung -> chay agent khong stream
+      const runner = createToolRunner({ root: process.cwd(), approval, confirm });
+      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent });
+      console.log(text);
+      return text;
+    }
+    if (decided) {
+      output.write('\n');
+      return buf;
+    }
+    const jt = extractJsonToolCall(buf);
+    if (!jt) {
+      console.log(buf);
+      return buf;
+    }
+    // La loi goi tool: chay vong lap agent, dung san cau tra loi dau lam buoc 1.
+    const runner = createToolRunner({ root: process.cwd(), approval, confirm });
+    const { text } = await runAgent({
+      cfg,
+      model: currentModel,
+      messages,
+      runner,
+      onEvent: agentEvent,
+      firstReply: { text: buf, toolCalls: [] },
+    });
+    console.log(text);
+    return text;
+  }
+
+  function agentEvent(type, data) {
+    if (type === 'tool') console.log(`  [tool] ${data.desc} ...`);
+    else if (type === 'result') console.log(`  [xong] ${data.summary}`);
+    else if (type === 'note') console.log(data);
+  }
+
+  for await (const rawLine of rl) {
+    const line = rawLine.trim();
     if (!line) { safePrompt(); continue; }
 
-    if (line === '/exit' || line === '/quit') { rl.close(); break; }
+    if (line === '/exit' || line === '/quit') break;
     if (line === '/help') { console.log(HELP); safePrompt(); continue; }
     if (line === '/clear') {
-      history = [];
-      staged = { textBlocks: [], images: [], notes: [] };
-      console.log('(da xoa lich su doan nay + dinh kem dang cho)');
+      history.length = 0;
+      staged = { files: [], images: [] };
+      console.log('(da xoa lich su doan nay va dinh kem dang cho)');
       safePrompt(); continue;
     }
-    if (line === '/attach') {
-      const d = describeAttachments(staged);
-      console.log(d ? d.replace('Da gui kem', 'Dang cho gui') : '(chua co dinh kem nao dang cho)');
-      safePrompt(); continue;
-    }
-    if (line.startsWith('/file ') || line.startsWith('/image ')) {
-      const isImg = line.startsWith('/image ');
-      const p = line.slice(isImg ? 7 : 6).trim().replace(/^"|"$/g, '');
-      try {
-        if (isImg) {
-          const a = await readImageAttachment(p);
-          staged.images.push(a);
-          if (a.large) console.log('Luu y: anh kha lon, gui nguyen ban co the bi tu choi.');
-        } else {
-          staged.textBlocks.push(await readTextAttachment(p));
-        }
-        console.log(describeAttachments(staged).replace('Da gui kem', 'Dang cho gui'));
-      } catch (e) {
-        console.log(`Loi dinh kem: ${e.message}`);
-      }
-      safePrompt(); continue;
-    }
-    if (line === '/model' || line.startsWith('/model ')) {
+    if (line.startsWith('/model')) {
       const id = line.slice(6).trim();
       if (!id) {
-        console.log(`model hien tai: ${model}`);
+        console.log(`Model dang dung: ${currentModel}`);
       } else if (!id.endsWith(':free')) {
-        console.log(`Tu choi: worker chi cho phep model ket thuc bang ":free".`);
+        console.log('Model phai ket thuc bang ":free" (worker chan model khac).');
       } else {
-        model = id;
-        await saveConfig({ workerUrl: cfg.workerUrl, proxySecret: cfg.proxySecret, model, approval: cfg.approval });
-        console.log(`Da doi model thanh ${model} (da luu)`);
+        currentModel = id;
+        const { saveConfig } = await import('../lib/config.mjs');
+        try {
+          const fresh = await loadConfig();
+          await saveConfig({ workerUrl: fresh.workerUrl, proxySecret: fresh.proxySecret, model: id, approval: fresh.approval });
+          console.log(`Da doi model: ${id} (da luu)`);
+        } catch {
+          console.log(`Da doi model cho phien nay: ${id} (luu that bai)`);
+        }
       }
       safePrompt(); continue;
     }
     if (line === '/models') {
       try {
         const ids = freeOnly(await listModels(cfg));
-        console.log(ids.length ? ids.slice(0, 40).join('\n') : '(worker khong tra ve model :free nao)');
-        if (ids.length > 40) console.log(`... va ${ids.length - 40} model nua`);
+        console.log(ids.map((x) => `  ${x}`).join('\n') || '(khong co model :free)');
       } catch (e) { console.log(`Loi: ${e.message}`); }
       safePrompt(); continue;
     }
-
-    // Tin nhan thuong: gop dinh kem dang cho + @mention trong cau.
-    let att = staged;
-    try {
-      const mentions = await expandMentions(line);
-      if (mentions.files.length || mentions.images.length) {
-        const extra = await collectAttachments({ files: mentions.files, images: mentions.images });
-        att = {
-          textBlocks: [...staged.textBlocks, ...extra.textBlocks],
-          images: [...staged.images, ...extra.images],
-          notes: [...staged.notes, ...extra.notes],
-        };
+    if (line.startsWith('/tools')) {
+      const v = line.slice(6).trim();
+      if (v === 'on') toolsOn = true;
+      else if (v === 'off') toolsOn = false;
+      console.log(`Che do agent (tools): ${toolsOn ? 'BAT' : 'TAT'}`);
+      safePrompt(); continue;
+    }
+    if (line.startsWith('/approval')) {
+      const v = Number(line.slice(9).trim());
+      if ([1, 2, 3].includes(v)) approval = v;
+      console.log(`Muc duyet tool: ${approval} (1 hoi tat ca, 2 vua, 3 tu do)`);
+      safePrompt(); continue;
+    }
+    if (line.startsWith('/undo')) {
+      const f = line.slice(5).trim();
+      try {
+        let target = f ? path.resolve(f) : null;
+        if (!target) {
+          const latest = await latestBackup();
+          target = latest ? latest.file : null;
+        }
+        if (!target) console.log('Chua co ban backup nao.');
+        else {
+          const entry = await restoreLatest(target);
+          console.log(entry ? `Da khoi phuc ${target} ve ban ${new Date(entry.at).toLocaleString('vi-VN')}.` : `Khong co backup cho ${target}.`);
+        }
+      } catch (e) { console.log(`Loi undo: ${e.message}`); }
+      safePrompt(); continue;
+    }
+    if (line.startsWith('/file') || line.startsWith('/image')) {
+      const isImage = line.startsWith('/image');
+      const p = line.slice(isImage ? 6 : 5).trim().replace(/^"(.*)"$/, '$1');
+      if (!p) {
+        console.log(`Dung: ${isImage ? '/image' : '/file'} <duong-dan>`);
+      } else if (!fs.existsSync(p)) {
+        console.log(`Khong tim thay file: ${p}`);
+      } else {
+        (isImage ? staged.images : staged.files).push(p);
+        console.log(`[Da gan ${isImage ? 'anh' : 'file'} ${p} cho tin nhan tiep theo — /attach de xem]`);
       }
+      safePrompt(); continue;
+    }
+    if (line === '/attach') {
+      if (!staged.files.length && !staged.images.length) console.log('(khong co dinh kem dang cho)');
+      else console.log(`Dang cho gui: ${[...staged.files.map((f) => 'file ' + f), ...staged.images.map((f) => 'anh ' + f)].join(', ')}`);
+      safePrompt(); continue;
+    }
+
+    // --- tin nhan thuong: dinh kem staged + @mention ---
+    const mentions = await expandMentions(line);
+    let att;
+    try {
+      att = await collectAttachments({
+        files: [...staged.files, ...mentions.files],
+        images: [...staged.images, ...mentions.images],
+      });
     } catch (e) {
       console.log(`Loi dinh kem: ${e.message}`);
       safePrompt(); continue;
     }
-    staged = { textBlocks: [], images: [], notes: [] };
     for (const n of att.notes) console.log(`Luu y: ${n}`);
-    const desc = describeAttachments(att);
-    const shadow = desc ? `${line}\n${desc}` : line;
-    history.push({ role: 'user', content: buildUserContent(line, att) });
+    const content = buildUserContent(line, att);
+    const shadow = line + (describeAttachments(att) ? `\n${describeAttachments(att)}` : '');
+    history.push({ role: 'user', content });
+    process.stdout.write('pe: ');
     try {
-      process.stdout.write('pe dang nghi... \r');
-      const { text } = await chatCompletion(cfg, { model, messages: history });
-      process.stdout.write(' '.repeat(20) + '\r');
-      console.log(text + '\n');
-      // Lich su giu ban text (kem dong mo ta dinh kem), khong giu base64.
+      const text = await replyTurn();
       history[history.length - 1] = { role: 'user', content: shadow };
       history.push({ role: 'assistant', content: text });
+      staged = { files: [], images: [] };
     } catch (e) {
-      process.stdout.write(' '.repeat(20) + '\r');
+      process.stdout.write('\n');
       history[history.length - 1] = { role: 'user', content: shadow };
       console.log(`Loi: ${e.message}\n(cau hoi van giu trong lich su — go lai neu muon thu tiep)`);
       if (att.images.length && /support image input/i.test(e.message)) {
@@ -137,5 +270,6 @@ export async function runChat() {
     }
     safePrompt();
   }
+  rl.close();
   console.log('Tam biet!');
 }
