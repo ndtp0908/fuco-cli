@@ -1,0 +1,79 @@
+// `pe init` — wizard cau hinh lan dau: worker URL + proxy secret + model.
+// Ghi vao ~/.pe/config.json, chmod 600.
+import readline from 'node:readline';
+import { DEFAULT_MODEL, loadConfig, normalizeUrl, saveConfig } from '../lib/config.mjs';
+import { apiFetch } from '../lib/api.mjs';
+
+function ask(rl, q, def) {
+  const hint = def ? ` [${def}]` : '';
+  return new Promise((resolve) => rl.question(`${q}${hint}: `, (a) => resolve(a.trim() || def || '')));
+}
+
+/** Nhap secret ma khong hien len man hinh. */
+function askHidden(q) {
+  return new Promise((resolve) => {
+    const stdin = process.stdin;
+    const stdout = process.stdout;
+    stdout.write(q + ': ');
+    let buf = '';
+    const done = (val) => {
+      stdin.removeListener('data', onData);
+      try { stdin.setRawMode(false); } catch {}
+      stdin.pause();
+      stdout.write('\n');
+      resolve(val);
+    };
+    const onData = (ch) => {
+      const s = ch.toString('utf8');
+      if (s === '\r' || s === '\n' || s === '\u0004') return done(buf);
+      if (s === '\u0003') { stdout.write('\n'); process.exit(130); }
+      if (s === '\u007f' || s === '\b') { buf = buf.slice(0, -1); return; }
+      if (s >= ' ' && !s.startsWith('\u001b')) buf += s;
+    };
+    try { stdin.setRawMode(true); } catch {}
+    stdin.resume();
+    stdin.on('data', onData);
+  });
+}
+
+export async function runInit() {
+  const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    console.log('— pe init: cau hinh ket noi toi fuco-agent worker —\n');
+    const cur = await loadConfig();
+    const workerUrl = normalizeUrl(await ask(rl, 'Worker URL (vi du https://xxx.workers.dev)', cur.workerUrl || ''));
+    rl.close();
+    if (!workerUrl) {
+      console.error('Huy: thieu worker URL.');
+      process.exitCode = 2;
+      return;
+    }
+    const proxySecret = await askHidden('Proxy secret (MY_SECRET tren worker)');
+    if (!proxySecret) {
+      console.error('Huy: thieu proxy secret.');
+      process.exitCode = 2;
+      return;
+    }
+    const rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
+    const model = await ask(rl2, 'Model mac dinh (phai la model :free)', cur.model || DEFAULT_MODEL);
+    rl2.close();
+
+    const p = await saveConfig({ workerUrl, proxySecret, model }, undefined);
+    console.log(`\nDa luu cau hinh vao ${p} (quyen 600, chi ban doc duoc).`);
+
+    // Thu ket noi ngay de biet dung/sai lien.
+    process.stdout.write('Dang thu ket noi toi worker... ');
+    try {
+      const data = await apiFetch({ workerUrl, proxySecret, model }, '/api/models', { timeoutMs: 20000 });
+      const n = Array.isArray(data?.data) ? data.data.length : 0;
+      console.log(`OK — worker tra loi, thay ${n} model.`);
+    } catch (e) {
+      console.log(`CHUA DUOC: ${e.message}`);
+      console.log('Kiem tra lai URL/secret roi chay `pe doctor` de chan doan chi tiet.');
+    }
+    console.log('\nXong! Thu ngay:  pe ask "xin chao"');
+  } catch (e) {
+    try { rl.close(); } catch {}
+    throw e;
+  }
+}

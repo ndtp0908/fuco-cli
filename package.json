@@ -1,0 +1,1 @@
+{"bin":{"pe":"./src/pe.mjs"},"description":"pe — CLI tro ly coding, noi chuyen voi pe qua fuco-agent worker (OpenAI-compatible). Buoc 0: ask / chat / init / doctor.","engines":{"node":">=18"},"license":"UNLICENSED","name":"pe-cli","private":true,"scripts":{"test":"node test/selftest.mjs"},"type":"module","version":"0.1.0"}
