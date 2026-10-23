@@ -72,23 +72,41 @@ export async function runEdit(args = []) {
     { role: 'system', content: EDIT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
     { role: 'user', content: `Yeu cau: ${instruction}\n\nFile ${path.basename(abs)} hien tai:\n\`\`\`\n${original}\n\`\`\`` },
   ];
+  // THU LAI 1 LAN (v0.9 tu chua): cau tra loi khong co khoi ```, noi
+  // dung giong het file goc (model chua sua), hoac loi goi model tam
+  // thoi -> mom lai van de cho model va xin tra loi lai dung dinh dang.
   process.stdout.write('Dang nghi cach sua... ');
-  let edited;
-  try {
-    const { text } = await chatCompletion(cfg, { model: model || cfg.model, messages });
-    edited = extractEdited(text);
-  } catch (e) {
+  let edited = null;
+  let lastProblem = '';
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const { text } = await chatCompletion(cfg, { model: model || cfg.model, messages });
+      const fenced = /```[^\n]*\n[\s\S]*?```/.test(text || '');
+      const cand = extractEdited(text || '');
+      if (!fenced) lastProblem = 'cau tra loi khong chua khoi ma ```...``` nao';
+      else if (cand.replace(/\s+$/, '') === original.replace(/\s+$/, '')) lastProblem = 'noi dung tra ve giong het file goc (model chua sua gi)';
+      else { edited = cand; break; }
+      if (attempt === 1) {
+        console.log(`chua dat (${lastProblem}) — thu lai 1 lan...`);
+        messages.push({ role: 'assistant', content: text || '' });
+        messages.push({ role: 'user', content: `Noi dung ban vua tra ve khong dung: ${lastProblem}. Hay tra ve lai TOAN BO file da sua, chi gom DUY NHAT 1 khoi \`\`\`...\`\`\`, khong kem giai thich ben ngoai khoi.` });
+        process.stdout.write('Dang nghi cach sua (lan 2)... ');
+      }
+    } catch (e) {
+      lastProblem = e.message;
+      if (attempt === 1) {
+        console.log(`loi (${e.message}) — thu lai 1 lan...`);
+        process.stdout.write('Dang nghi cach sua (lan 2)... ');
+      }
+    }
+  }
+  if (edited === null) {
     console.log('');
-    console.error(`Loi: ${e.message}`);
-    if (/support image input/i.test(e.message)) { /* khong lien quan */ }
+    console.error(`Khong sua duoc sau 2 lan thu: ${lastProblem}`);
     process.exitCode = 1;
     return;
   }
   console.log('xong.\n');
-  if (edited.replace(/\s+$/, '') === original.replace(/\s+$/, '')) {
-    console.log('Model khong sua gi ca (noi dung giu nguyen).');
-    return;
-  }
   console.log(`--- Diff de xuat cho ${file} ---`);
   console.log(formatDiff(original, edited));
   console.log('-------------------------------');

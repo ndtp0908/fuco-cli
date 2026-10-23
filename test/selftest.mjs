@@ -152,6 +152,31 @@ function startMock() {
               else if (!lastStr.includes('Ket qua tool')) reply = '```json\n{"tool":"run_bash","args":{"command":"false"}}\n```';
             }
           }
+          // --- v0.9 tu chua: HEAL (model bo cuoc) + VERIFY + EDIT-RETRY ---
+          {
+            const lastStr2 = typeof lastContent === 'string' ? lastContent : '';
+            if (lastStr2.includes('Van con loi chua duoc xu ly')) {
+              reply = '```json\n{"tool":"run_bash","args":{"command":"true"}}\n```';
+            } else if (lastStr2.includes('HEAL-TASK')) {
+              reply = '```json\n{"tool":"run_bash","args":{"command":"false"}}\n```';
+            } else if (lastStr2.includes('Ket qua tool') && lastStr2.includes('Exit: 1') && allText.includes('HEAL-TASK')) {
+              reply = 'GIVE-UP-TEXT';
+            } else if (lastStr2.includes('Ket qua tool') && lastStr2.includes('Exit: 0') && allText.includes('HEAL-TASK')) {
+              reply = 'HEAL-DONE';
+            }
+            if (lastStr2.includes('Lenh kiem chung')) {
+              reply = '```json\n{"tool":"write_file","args":{"path":"vdone.txt","content":"ok"}}\n```';
+            } else if (lastStr2.includes('VERIFY-TASK')) {
+              reply = 'WORK-DONE';
+            } else if (lastStr2.includes('Ket qua tool') && allText.includes('Lenh kiem chung')) {
+              reply = 'FIXED-DONE';
+            }
+            if (sysText.includes('cong cu sua file') && allText.includes('EDIT-RETRY-MARK')) {
+              reply = allText.includes('tra ve lai TOAN BO')
+                ? '```\nEDITED-LINE\n```'
+                : 'GARBAGE-KHONG-DINH-DANG';
+            }
+          }
           if (parsed?.web === true) reply = 'WEB-FLAG-OK';
           if (parsed?.stream) {
             res.writeHead(200, { 'Content-Type': 'text/event-stream' });
@@ -565,6 +590,25 @@ async function main() {
   let revText = '';
   try { revText = await fs.readFile(path.join(projChatRev, '.pe', 'lessons.md'), 'utf8'); } catch { /* chua co */ }
   ok('chat: agent loi->sua xong thi de xuat bai hoc, go y la luu', r.code === 0 && r.out.includes('Bai hoc de xuat') && r.out.includes('Da luu bai hoc') && revText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code} out=${r.out.slice(-400)} file=${revText.slice(0, 120)}`);
+
+  // 29. Tu chua (v0.9): heal khi model bo cuoc, edit thu lai, --verify.
+  const projHeal = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-heal-'));
+  r = await runCli(['do', 'HEAL-TASK chay thu', '--yolo'], menv, 'n\n', { cwd: projHeal });
+  ok('agent bo cuoc khi con loi: heal tu them luot sua -> xong', r.code === 0 && r.out.includes('[tu chua]') && r.out.includes('HEAL-DONE'), `code=${r.code} out=${r.out.slice(-260)}`);
+
+  const projEditRetry = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-editretry-'));
+  await fs.writeFile(path.join(projEditRetry, 'code.txt'), 'ORIGINAL-LINE\n');
+  r = await runCli(['edit', 'code.txt', 'EDIT-RETRY-MARK sua dong nay', '--yes'], menv, '', { cwd: projEditRetry });
+  const afterRetry = await fs.readFile(path.join(projEditRetry, 'code.txt'), 'utf8');
+  ok('pe edit: lan 1 sai dinh dang -> thu lai lan 2 thanh cong', r.code === 0 && r.out.includes('thu lai 1 lan') && afterRetry.includes('EDITED-LINE'), `code=${r.code} out=${r.out.slice(0, 220)} file=${afterRetry.slice(0, 40)}`);
+
+  const projVerify = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-verify-'));
+  r = await runCli(['do', 'VERIFY-TASK lam viec', '--yolo', '--verify', 'test -f vdone.txt'], menv, '', { cwd: projVerify });
+  let vExists = false;
+  try { await fs.stat(path.join(projVerify, 'vdone.txt')); vExists = true; } catch { /* chua co */ }
+  ok('do --verify: fail -> agent sua -> chay lai PASS', r.code === 0 && r.out.includes('[kiem chung] PASS') && vExists, `code=${r.code} out=${r.out.slice(-260)}`);
+  r = await runCli(['do', 'VERIFY-TASK lam viec', '--yolo', '--verify', 'false'], menv, '', { cwd: projVerify });
+  ok('do --verify: sua 2 vong van fail -> exit 1', r.code === 1 && r.out.includes('Van FAIL sau 2 vong sua'), `code=${r.code} out=${r.out.slice(-220)}`);
 
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);

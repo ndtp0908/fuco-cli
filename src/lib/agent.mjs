@@ -102,7 +102,7 @@ export function callKey(name, args) {
  * - firstReply: (tuy chon) ket qua chatCompletion da goi san cho buoc dau (chat streaming dung).
  * Tra ve { text, steps, stopped: null | 'loop' | 'cap' }.
  */
-export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps = 60, stallLimit = 3, seen, firstReply, signal, web } = {}) {
+export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps = 60, stallLimit = 3, seen, firstReply, signal, web, healRounds = 1 } = {}) {
   const note = (t) => { if (onEvent) onEvent('note', t); };
   const seenMap = seen || new Map();
   let steps = 0;
@@ -118,14 +118,21 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
   // chay ket thuc thanh cong (stopped === null) + co incidents nghia la
   // "loi -> sua -> xong": ben goi (do/chat) se rut bai hoc tu day.
   const incidents = [];
+  // Loi CHUA duoc xu ly (v0.9 tu chua): loi xay ra ma chua co lan goi
+  // THANH CONG nao cua CUNG tool do o sau no. Model tra loi text ket
+  // thuc trong khi unresolved con -> chua xong viec.
+  const unresolved = [];
+  let healLeft = healRounds;
   const isErrorResult = (name, result) =>
     result.startsWith('LOI:') || (name === 'run_bash' && /\nExit: [1-9]/.test(`\n${result}`));
   const pushIncident = (name, args, result) => {
     const firstLine = result.split('\n')[0].slice(0, 200);
-    if (incidents.some((i) => i.tool === name && i.error.split('\n')[0] === firstLine)) return;
-    if (incidents.length < 8) {
-      incidents.push({ tool: name, desc: describeToolCall(name, args), error: String(result).slice(0, 400) });
+    let entry = incidents.find((i) => i.tool === name && i.error.split('\n')[0] === firstLine);
+    if (!entry && incidents.length < 8) {
+      entry = { tool: name, desc: describeToolCall(name, args), error: String(result).slice(0, 400) };
+      incidents.push(entry);
     }
+    if (entry && !unresolved.includes(entry)) unresolved.push(entry);
   };
 
   for (;;) {
@@ -147,15 +154,33 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
     }
 
     if (!calls.length) {
+      // TU CHUA (v0.9): model dinh ket thuc nhung van con loi chua xu
+      // ly -> khong cho ket thuc, mom lai loi va yeu cau sua tiep
+      // (toi da healRounds luot nhu nay trong 1 lan chay).
+      if (healLeft > 0 && unresolved.length) {
+        healLeft--;
+        const errs = unresolved
+          .map((i) => `- ${i.desc}: ${String(i.error).split('\n')[0].slice(0, 160)}`)
+          .join('\n');
+        note(`[tu chua] Con ${unresolved.length} loi chua xu ly — pe yeu cau model sua tiep thay vi ket thuc.`);
+        messages.push({ role: 'assistant', content: reply.text });
+        messages.push({
+          role: 'user',
+          content: `Van con loi chua duoc xu ly:\n${errs}\n\nHay dung tool sua cho xong roi kiem tra lai ket qua. Neu that su khong the sua thi tra loi giai thich ro ly do, khong goi tool nua.`,
+        });
+        unresolved.length = 0;
+        reply = null;
+        continue;
+      }
       messages.push({ role: 'assistant', content: reply.text });
-      return { text: reply.text, steps, stopped: null, incidents };
+      return { text: reply.text, steps, stopped: null, incidents, unresolved };
     }
 
     if (steps >= maxSteps) {
       const msg = `Da dung ${maxSteps} luot tool trong 1 phien lam viec. Pe dung lai tai day — anh go "tiep tuc" de pe lam tiep tu cho nay (cac tool da chay van con trong ngu canh, pe khong lam lai tu dau).`;
       note(msg);
       messages.push({ role: 'assistant', content: msg });
-      return { text: msg, steps, stopped: 'cap', incidents };
+      return { text: msg, steps, stopped: 'cap', incidents, unresolved };
     }
 
     const results = [];
@@ -172,6 +197,13 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
       if (onEvent) onEvent('tool', { name: call.name, args: call.args, desc: describeToolCall(call.name, call.args) });
       const result = String(await runner.run(call.name, call.args));
       if (isErrorResult(call.name, result)) pushIncident(call.name, call.args, result);
+      else {
+        // Tool nay vua chay thanh cong -> cac loi truoc cua CHINH no
+        // coi nhu da duoc xu ly.
+        for (let i = unresolved.length - 1; i >= 0; i--) {
+          if (unresolved[i].tool === call.name) unresolved.splice(i, 1);
+        }
+      }
       if (onEvent) onEvent('result', { name: call.name, summary: result.split('\n')[0].slice(0, 160) });
       batchSeen.set(key, result);
       // Cham tien trien: goi moi hoac ket qua khac lan truoc = co thong
@@ -190,7 +222,7 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
       note(msg);
       messages.push({ role: 'user', content: `Ket qua tool:\n${results.join('\n\n')}` });
       messages.push({ role: 'assistant', content: msg });
-      return { text: msg, steps, stopped: 'loop', incidents };
+      return { text: msg, steps, stopped: 'loop', incidents, unresolved };
     }
 
     messages.push({ role: 'user', content: `Ket qua tool:\n${results.join('\n\n')}\n\n(Neu can them tool thi goi tiep; xong thi tra loi ket qua cuoi cho nguoi dung.)` });

@@ -117,8 +117,14 @@ bang tools (read_file/write_file/edit_file/list_files/grep/run_bash).
 Moi lan ghi file deu backup truoc — pe undo khoi phuc duoc.
 
 Cu phap:
-  pe do "<viec>" [--yolo] [--approval 1|2|3] [--web]
+  pe do "<viec>" [--yolo] [--approval 1|2|3] [--web] [--verify "<lenh>"]
   (--web: worker tim web + chen nguon cho cau hoi goc truoc khi agent chay)
+  (--verify: lam xong tu chay lenh kiem chung, vd "npm run build" hay
+   "npm test"; FAIL thi dua loi ve cho agent sua tiep, toi da 2 vong)
+
+Tu chua (v0.9): neu model dinh ket thuc ma van con loi tool chua xu ly,
+pe khong cho ket thuc — tu them 1 luot yeu cau sua tiep cho xong.
+Loi da sua xong trong luc lam se duoc rut thanh bai hoc (pe lessons).
 
 Muc duyet:
   1  hoi truoc moi thao tac sua/chay lenh
@@ -127,12 +133,17 @@ Muc duyet:
 
 Vi du:
   pe do "them xu ly chia cho 0 vao Calculator.cs roi build thu"
+  pe do "sua loi build" --verify "npm run build"
   pe do "tim cho nao dung HttpClient chua dispose" --approval 1`,
 
   edit: `pe edit — sua 1 file theo yeu cau, xem diff truoc khi ghi
 
 Cu phap:
   pe edit <file> "<yeu cau>" [--yes] [--dry] [--model <id>]
+
+Neu model tra ve sai dinh dang (khong co khoi ma), tra nguyen file goc
+(chua sua gi) hoac loi tam thoi: pe tu thu lai 1 lan, mom lai loi cu the
+cho model tra loi lai dung dinh dang (v0.9).
 
   --dry    chi xem diff de xuat, khong ghi
   --yes    ghi ngay khong hoi (file cu van duoc backup)

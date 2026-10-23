@@ -54,17 +54,20 @@ export async function runDo(args = []) {
   let yolo = false;
   let approval;
   let web = false;
+  let verifyCmd = '';
   const taskParts = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--yolo') { yolo = true; continue; }
     if (a === '--web') { web = true; continue; }
     if (a === '--approval') { approval = Number(args[++i]); continue; }
+    if (a === '--verify') { verifyCmd = String(args[++i] || ''); continue; }
+    if (a.startsWith('--verify=')) { verifyCmd = a.slice('--verify='.length); continue; }
     taskParts.push(a);
   }
   const task = taskParts.join(' ').trim();
   if (!task) {
-    console.error('Dung: pe do "<viec can lam>" [--yolo] [--approval 1|2|3] [--web]');
+    console.error('Dung: pe do "<viec can lam>" [--yolo] [--approval 1|2|3] [--web] [--verify "<lenh kiem chung>"]');
     process.exitCode = 2;
     return;
   }
@@ -82,14 +85,55 @@ export async function runDo(args = []) {
     { role: 'system', content: AGENT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
     { role: 'user', content: task },
   ];
-  console.log(`pe do (muc duyet ${level}${level === 3 ? ' — yolo' : ''}${web ? ', web: bat' : ''}): ${task}\n`);
+  console.log(`pe do (muc duyet ${level}${level === 3 ? ' — yolo' : ''}${web ? ', web: bat' : ''}${verifyCmd ? `, verify: ${verifyCmd}` : ''}): ${task}\n`);
+  const sharedSeen = new Map();
   try {
-    const { text, incidents, stopped } = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, web });
-    console.log(`\npe: ${text}`);
+    const first = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, web, seen: sharedSeen });
+    console.log(`\npe: ${first.text}`);
+    const allIncidents = [...(first.incidents || [])];
+    let finalText = first.text;
+    let finalStopped = first.stopped;
+    let verifyFailed = false;
+
+    // KIEM CHUNG SAU KHI LAM (v0.9): chay lenh verify (vd build/test);
+    // FAIL thi dua nguyen output ve cho agent sua tiep, toi da 2 vong.
+    if (verifyCmd) {
+      for (let round = 0; round <= 2; round++) {
+        console.log(`\n[kiem chung] chay: ${verifyCmd}`);
+        const vres = String(await runner.run('run_bash', { command: verifyCmd }));
+        if (vres.startsWith('Nguoi dung TU CHOI')) {
+          console.log('[kiem chung] bi tu choi duyet — bo qua kiem chung.');
+          break;
+        }
+        const vFail = vres.startsWith('LOI:') || /\nExit: [1-9]/.test(`\n${vres}`);
+        console.log(vres.split('\n').slice(0, 6).join('\n'));
+        if (!vFail) {
+          console.log('[kiem chung] PASS ✓');
+          break;
+        }
+        if (round === 2) {
+          console.log('[kiem chung] Van FAIL sau 2 vong sua — pe dung lai tai day, anh xem output loi o tren.');
+          verifyFailed = true;
+          process.exitCode = 1;
+          break;
+        }
+        console.log(`[kiem chung] FAIL — dua loi ve cho agent sua tiep (vong ${round + 1}/2)...`);
+        messages.push({
+          role: 'user',
+          content: `Lenh kiem chung \`${verifyCmd}\` THAT BAI. Ket qua chay:\n${vres.slice(0, 3000)}\n\nHay sua code de lenh kiem chung nay chay thanh cong (Exit: 0).`,
+        });
+        const fix = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, seen: sharedSeen });
+        if (fix.incidents) allIncidents.push(...fix.incidents);
+        finalText = fix.text;
+        finalStopped = fix.stopped;
+        console.log(`\npe: ${fix.text}`);
+      }
+    }
+
     // Rut bai hoc: chi khi viec THANH CONG ma giua duong co loi da sua.
-    if (incidents?.length && !stopped) {
+    if (allIncidents.length && !finalStopped && !verifyFailed) {
       try {
-        const candidates = await distillLessons(cfg, { task, incidents, finalText: text });
+        const candidates = await distillLessons(cfg, { task, incidents: allIncidents, finalText });
         if (candidates.length) {
           console.log('\nTrong luc lam viec pe co pham loi roi tu sua duoc. Pe rut ra bai hoc sau — anh duyet thi pe moi luu lai cho lan sau:');
           await reviewAndSaveLessons({ candidates, ask: askYesNoShared });
