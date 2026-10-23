@@ -10,8 +10,14 @@
   "name": "pe-cli",
   "private": true,
   "scripts": {
-    "test": "node test/selftest.mjs"
+    "test": "node test/selftest.mjs",
+    "build:exe": "node scripts/build-exe.mjs",
+    "build:exe:win": "node scripts/build-exe.mjs --win"
   },
   "type": "module",
-  "version": "0.2.0"
+  "version": "0.3.0",
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "postject": "^1.0.0-alpha.6"
+  }
 }

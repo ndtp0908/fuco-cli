@@ -21,10 +21,38 @@ function ok(name, cond, extra = '') {
 // ---- mock worker ----
 function startMock() {
   return new Promise((resolve) => {
+    const mockTasks = new Map();
     const srv = http.createServer((req, res) => {
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
+        // --- mock pe-worker (hang doi KV) ---
+        if (req.url === '/task' || req.url.startsWith('/result/') || req.url === '/pending' || req.url === '/processing') {
+          if (req.headers['x-agent-secret'] !== SECRET) {
+            res.writeHead(200, { 'Content-Type': 'text/html' });
+            return res.end('<html><head><title>404 Not Found</title></head><body>Not Found</body></html>');
+          }
+          if (req.url === '/task' && req.method === 'POST') {
+            const id = 't_mock123456';
+            mockTasks.set(id, { id, status: 'done', result: { answer: 'MOCK-ANSWER' } });
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ task_id: id, status: 'queued' }));
+          }
+          if (req.url.startsWith('/result/')) {
+            const id = req.url.split('/')[2];
+            const t = mockTasks.get(id);
+            res.writeHead(t ? 200 : 404, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify(t ? { status: t.status, result: t.result } : { ok: false }));
+          }
+          if (req.url === '/pending') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ pending: [] }));
+          }
+          if (req.url === '/processing') {
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ processing: [] }));
+          }
+        }
         if (req.headers['x-proxy-auth'] !== SECRET) {
           res.writeHead(200, { 'Content-Type': 'text/html' });
           return res.end('<html><head><title>404 Not Found</title></head><body>Not Found</body></html>');
@@ -46,6 +74,9 @@ function startMock() {
             return res.end(JSON.stringify({ error: { message: 'Access Denied: Only :free models allowed.' } }));
           }
           let reply = 'MOCK-REPLY-OK';
+          if (sysText.includes('Ban tom tat cuoc hoi thoai')) {
+            reply = 'TOM-TAT-X';
+          } else 
           if (sysText.includes('cong cu sua file')) {
             const mm = String(lastContent || '').match(/```\n([\s\S]*?)\n```/);
             const fc = mm ? mm[1] : '';
@@ -273,6 +304,46 @@ async function main() {
   await fs.writeFile(path.join(projList, 'z.md'), '3');
   r = await runCli(['do', 'LIST-TASK liet ke file txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projList });
   ok('list_files **/*.txt thay du 2 file (goc + sub)', r.code === 0 && r.out.includes('LIST-DONE') && r.out.includes('2 file:'), `code=${r.code} out=${r.out.slice(0, 140)}`);
+
+  // 15. assign + result qua mock KV
+  const menvKV = { ...menv, PE_PE_WORKER_URL: mockUrl };
+  r = await runCli(['assign', 'ASSIGN-TEST xem giup'], menvKV);
+  const mId = /t_[a-z0-9]+/.exec(r.out);
+  ok('pe assign gui task vao hang doi', r.code === 0 && !!mId, `code=${r.code} out=${r.out.slice(0, 100)}`);
+  if (mId) {
+    r = await runCli(['result', mId[0]], menvKV);
+    ok('pe result lay duoc dap an', r.code === 0 && r.out.includes('MOCK-ANSWER'), `code=${r.code} out=${r.out.slice(0, 100)}`);
+  }
+  r = await runCli(['tasks'], menvKV);
+  ok('pe tasks chay duoc', r.code === 0 && r.out.includes('Hang doi'), `code=${r.code} out=${r.out.slice(0, 80)}`);
+
+  // 16. sessions: chat luu phien, --resume noi tiep duoc
+  const sessHome = path.join(tmpHome, 'sess-home');
+  const { saveConfig: saveCfgFn } = await import('../src/lib/config.mjs');
+  await saveCfgFn({ workerUrl: mockUrl, proxySecret: SECRET, model: FREE_MODEL }, sessHome);
+  const menvSess = { PE_HOME: sessHome, PE_WORKER_URL: mockUrl, PE_PROXY_SECRET: SECRET, PE_MODEL: FREE_MODEL };
+  r = await runCli(['chat'], menvSess, 'cau hoi mot\n/exit\n');
+  const sessDir = path.join(sessHome, '.pe', 'sessions');
+  let sessFiles = [];
+  try { sessFiles = await fs.readdir(sessDir); } catch {}
+  ok('chat tao phien luu o ~/.pe/sessions', r.code === 0 && sessFiles.length === 1, `code=${r.code} files=${sessFiles.length}`);
+  if (sessFiles.length === 1) {
+    const s1 = JSON.parse(await fs.readFile(path.join(sessDir, sessFiles[0]), 'utf8'));
+    ok('phien co 2 tin (hoi + dap)', s1.messages.length === 2, `n=${s1.messages.length}`);
+    r = await runCli(['chat', '--resume'], menvSess, 'cau hoi hai\n/exit\n');
+    const s2 = JSON.parse(await fs.readFile(path.join(sessDir, sessFiles[0]), 'utf8'));
+    ok('--resume noi tiep cung phien (4 tin)', r.code === 0 && s2.messages.length === 4, `code=${r.code} n=${s2.messages.length}`);
+  }
+
+  // 17. auto-compact: phien seed 16 tin + context limit nho -> tom tat
+  const seedMsgs = [];
+  for (let i = 0; i < 16; i++) seedMsgs.push({ role: i % 2 ? 'assistant' : 'user', content: 'tin ' + i + ' ' + 'x'.repeat(160) });
+  const seed = { id: 's_seed', title: 'seed', cwd: tmpHome, model: FREE_MODEL, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), summary: null, messages: seedMsgs };
+  await fs.mkdir(sessDir, { recursive: true });
+  await fs.writeFile(path.join(sessDir, 's_seed.json'), JSON.stringify(seed));
+  r = await runCli(['chat', '--resume', 's_seed'], { ...menvSess, PE_CONTEXT_LIMIT: '100' }, 'cau hoi moi\n/exit\n');
+  const s3 = JSON.parse(await fs.readFile(path.join(sessDir, 's_seed.json'), 'utf8'));
+  ok('auto-compact tom tat tin cu, giu 12 tin gan nhat', r.code === 0 && s3.summary && s3.summary.text === 'TOM-TAT-X' && s3.messages.length <= 14, `code=${r.code} summary=${JSON.stringify(s3.summary)} n=${s3.messages.length}`);
 
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);

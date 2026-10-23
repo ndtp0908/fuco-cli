@@ -28,6 +28,6 @@ export async function runModel(args) {
     process.exitCode = 2;
     return;
   }
-  await saveConfig({ workerUrl: cfg.workerUrl, proxySecret: cfg.proxySecret, model: id, approval: cfg.approval });
+  await saveConfig({ workerUrl: cfg.workerUrl, peWorkerUrl: cfg.peWorkerUrl, proxySecret: cfg.proxySecret, model: id, approval: cfg.approval });
   console.log(`Da doi model mac dinh thanh ${id}`);
 }

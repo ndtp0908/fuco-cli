@@ -1,6 +1,7 @@
 // `pe doctor` — kiem tra moi truoc khi dung: node, config, ket noi worker, auth, model.
 import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
 import { apiFetch, PeError } from '../lib/api.mjs';
+import { listPending } from '../lib/queue.mjs';
 
 const OK = '\u2713';
 const NO = '\u2717';
@@ -38,6 +39,14 @@ export async function runDoctor() {
 
   // 4. Model hop le (worker chi cho :free)
   line(String(cfg.model).endsWith(':free'), `model mac dinh "${cfg.model}"${String(cfg.model).endsWith(':free') ? '' : ' — worker se tu choi (403)'}`);
+
+  // 4b. Pe-worker (hang doi assign) — thong tin them, khong tinh fail
+  try {
+    const pend = await listPending(cfg);
+    console.log(`  ${OK} pe-worker (assign) noi duoc — ${pend.length} viec dang cho`);
+  } catch (e) {
+    console.log(`  - pe-worker (assign) chua noi duoc: ${e.message}`);
+  }
 
   // 5. Ket noi worker + auth (chi khi du thong tin)
   if (miss.length === 0) {

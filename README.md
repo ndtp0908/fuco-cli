@@ -1,7 +1,7 @@
 # pe — CLI trợ lý coding
 
 `pe` là dòng lệnh để trò chuyện với pé qua **fuco-agent worker** (Cloudflare Worker, OpenAI-compatible).
-Hiện tại đã có: **Bước 0** (`ask`/`chat`/`init`/`doctor`/`model` + đính kèm file/ảnh) và **Bước 1** (agent dùng tools trong project: `pe do`, `pe edit`, `pe undo`), kèm streaming, bộ nhớ theo project.
+Đã hoàn thành cả 3 bước: **Bước 0** (`ask`/`chat`/`init`/`doctor`/`model` + đính kèm file/ảnh), **Bước 1** (agent dùng tools trong project: `pe do`, `pe edit`, `pe undo`), **Bước 2** (phiên chat lưu/mở lại + auto-compact + `pe assign` giao việc dài qua hàng đợi), **Bước 3** (đóng gói 1 file `.exe`). Kèm streaming và bộ nhớ theo project.
 
 ## Cài đặt
 
@@ -75,7 +75,7 @@ Trong chat còn có: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model
 ## Kiểm tra
 
 ```bash
-npm test   # 36 ca: config/env/project override, mock worker (sai secret, model non-free,
+npm test   # 43 ca: config/env/project override, mock worker (sai secret, model non-free,
            # mất mạng), streaming SSE, đính kèm file/ảnh/@mention/stdin, help chi tiết,
            # pe edit + undo, agent pe do (đọc→sửa file), glob list_files, chat đa-tool JSON
 ```
@@ -83,15 +83,40 @@ npm test   # 36 ca: config/env/project override, mock worker (sai secret, model 
 ## Thiết kế (đã chốt D1–D7)
 
 - Tên lệnh `pe` (D1); repo riêng `ndtp0908/fuco-cli` (D7)
-- `pe assign` (giao việc dài qua hàng đợi KV) để Bước 2 (D2)
+- `pe assign` giao việc dài qua hàng đợi KV (D2) — xong ở Bước 2
 - Mức duyệt mặc định 2 (D3) — đã dùng thật từ Bước 1
 - Model mặc định = model free như app, đổi bằng `/model` hoặc `pe model` (D4)
 - Secret ở `~/.pe/config.json` qua wizard, env ghi đè (D5)
 - Đóng gói 1 file `.exe` bằng Node SEA (D6) — Bước 3
 
+## Phiên chat & giao việc dài (Bước 2)
+
+```bash
+pe chat                 # phiên tự lưu vào ~/.pe/sessions sau mỗi lượt
+pe chat --resume        # mở lại phiên gần nhất (kể cả sau khi tắt máy)
+pe sessions             # liệt kê các phiên đã lưu
+pe assign "review PR dang nhap, tim loi bao mat" --type review   # giao việc cho pe
+pe tasks                # xem hàng đợi
+pe result <task_id>     # lấy kết quả (hoặc thêm --wait ngay ở assign)
+```
+
+Chat dài tự **rút gọn ngữ cảnh** (auto-compact): khi lịch sử vượt ~75% giới hạn (mặc định 100k token, đổi bằng `PE_CONTEXT_LIMIT`), pe tóm tắt các tin cũ nhất, giữ 12 tin gần nhất — bản tóm tắt lưu trong phiên nên mở lại vẫn liền mạch.
+
+`pe assign` gửi việc vào hàng đợi KV của pe-worker; pé xử lý theo chu kỳ (08:00–16:30, T2–T7). Types: `ask | review | plan | analyze | research | transform`.
+
+## Đóng gói .exe (Bước 3)
+
+```bash
+npm install
+npm run build:exe        # bản cho hệ điều hành đang chạy -> dist-exe/pe
+npm run build:exe:win    # tải node.exe Windows x64 -> dist-exe/pe.exe (~90 MB)
+```
+
+Bản `.exe` chạy độc lập, **không cần cài Node**. Vì là bản tự đóng gói (Node SEA, tiêm blob vào node.exe) nên Windows có thể báo "unknown publisher"/SmartScreen lần đầu — chọn *More info → Run anyway*.
+
 ## Lộ trình
 
 - ✅ Bước 0: ask/chat/init/doctor/model (+ đính kèm, help chi tiết, streaming, bộ nhớ project)
 - ✅ Bước 1: agent + tools, `pe do`, `pe edit`/`pe undo`
-- ⬜ Bước 2: lưu phiên chat để mở lại + tự rút gọn ngữ cảnh, `pe assign`
-- ⬜ Bước 3: đóng gói `.exe` một file bằng Node SEA
+- ✅ Bước 2: phiên chat lưu/mở lại + auto-compact, `pe assign` qua hàng đợi KV
+- ✅ Bước 3: đóng gói `.exe` một file bằng Node SEA

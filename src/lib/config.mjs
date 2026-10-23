@@ -4,6 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const DEFAULT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free'; // model free mac dinh, giong app
+export const DEFAULT_PE_WORKER_URL = 'https://fuco-pe-agent.ndtphuoc2003.workers.dev'; // hang doi KV cua pe (assign)
+export const DEFAULT_CONTEXT_LIMIT = 100000; // token uoc tinh cho auto-compact (model free pho bien 128k+)
 export const DEFAULT_APPROVAL = 2; // D3: tu sua file trong project, hoi khi chay shell nguy hiem
 
 export function configDir(home = process.env.PE_HOME || os.homedir()) {
@@ -40,12 +42,14 @@ export async function loadConfig(home) {
   // ghi de model/approval cua config toan cuc. Secret KHONG doc tu project.
   const proj = await loadProjectConfig();
   const workerUrl = normalizeUrl(cleanStr(env.PE_WORKER_URL) || cleanStr(file.workerUrl));
+  const peWorkerUrl = normalizeUrl(cleanStr(env.PE_PE_WORKER_URL) || cleanStr(file.peWorkerUrl) || DEFAULT_PE_WORKER_URL);
   const proxySecret = cleanStr(env.PE_PROXY_SECRET) || cleanStr(file.proxySecret);
+  const contextLimit = Number(env.PE_CONTEXT_LIMIT) > 0 ? Number(env.PE_CONTEXT_LIMIT) : DEFAULT_CONTEXT_LIMIT;
   const model = cleanStr(env.PE_MODEL) || proj.model || cleanStr(file.model) || DEFAULT_MODEL;
   const approvalRaw = cleanStr(env.PE_APPROVAL) ?? proj.approval ?? file.approval;
   const approval = [1, 2, 3].includes(Number(approvalRaw)) ? Number(approvalRaw) : DEFAULT_APPROVAL;
   return {
-    workerUrl, proxySecret, model, approval,
+    workerUrl, peWorkerUrl, proxySecret, model, approval, contextLimit,
     _meta: {
       path: p,
       fileExists: fileOk,
@@ -113,6 +117,7 @@ export async function saveConfig(obj, home) {
   await fs.mkdir(dir, { recursive: true });
   const data = {
     workerUrl: normalizeUrl(obj.workerUrl || ''),
+    peWorkerUrl: normalizeUrl(obj.peWorkerUrl || DEFAULT_PE_WORKER_URL),
     proxySecret: obj.proxySecret || '',
     model: obj.model || DEFAULT_MODEL,
     approval: [1, 2, 3].includes(Number(obj.approval)) ? Number(obj.approval) : DEFAULT_APPROVAL,

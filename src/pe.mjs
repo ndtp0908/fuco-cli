@@ -8,11 +8,19 @@ import { runDoctor } from './commands/doctor.mjs';
 import { runModel } from './commands/model.mjs';
 import { runEdit, runUndo } from './commands/edit.mjs';
 import { runDo } from './commands/do.mjs';
+import { runAssign, runTasks, runResult } from './commands/assign.mjs';
+import { listSessions } from './lib/session.mjs';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const VERSION = JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+const VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
+  } catch {
+    return '0.3.0'; // ban dong goi 1 file (SEA) khong co package.json canh ben
+  }
+})();
 
 const HELP = `pe v${VERSION} — CLI tro ly coding (noi voi pe qua fuco-agent worker)
 
@@ -24,6 +32,9 @@ Dung:
   pe do "<viec>"          giao 1 viec cho agent lam trong project (--yolo = duyet muc 3)
   pe edit <file> "<yc>"   sua 1 file theo yeu cau, xem diff roi moi ghi
   pe undo [file]          khoi phuc file ve ban truoc khi pe sua
+  pe assign "<viec>"      giao viec dai cho pe qua hang doi (xem pe tasks / pe result)
+  pe chat --resume        mo lai phien chat gan nhat (phien tu luu o ~/.pe/sessions)
+  pe sessions             liet ke cac phien chat da luu
   pe doctor               kiem tra cau hinh + ket noi worker
   pe model [show|list|<id>]  xem / doi model mac dinh (phai la :free)
   pe help [lenh]          xem huong dan tong, hoac chi tiet 1 lenh
@@ -142,6 +153,31 @@ Vi du:
   pe undo src\\Calculator.cs
   pe undo`,
 
+  assign: `pe assign — giao viec dai cho pe qua hang doi KV
+
+Pe nhan viec va xu ly theo chu ky (08:00-16:30, T2-T7). Phu hop viec
+review/plan/research/analyze dai; viec sua code tai cho thi dung pe do.
+
+Cu phap:
+  pe assign "<viec>" [--type <loai>] [--file <path>]... [--wait] [--timeout <phut>]
+  pe tasks                 xem hang doi + viec da giao
+  pe result <task_id>      xem ket qua 1 viec
+
+Loai viec: ask | review | plan | analyze | research | transform
+
+Vi du:
+  pe assign "review PR dang nhap, tim loi bao mat" --type review
+  pe assign "nghien cuu ve Row Level Security cua Supabase" --type research --wait`,
+
+  sessions: `pe sessions — cac phien chat da luu
+
+  pe sessions              liet ke (moi nhat truoc)
+  pe chat --resume         mo lai phien gan nhat
+  pe chat --resume <id>    mo lai phien cu the
+
+Phien tu luu sau moi luot chat vao ~/.pe/sessions — tat may mo lai van
+tiep tuc duoc doan chat, ke ca ban tom tat ngu canh.`,
+
   model: `pe model — xem / doi model mac dinh
 
 Cu phap:
@@ -154,6 +190,18 @@ Vi du:
   pe model nvidia/nemotron-3-ultra-550b-a55b:free`,
 };
 
+async function runSessions() {
+  const all = await listSessions();
+  if (!all.length) {
+    console.log('Chua co phien chat nao. Bat dau: pe chat');
+    return;
+  }
+  for (const s of all.slice(0, 20)) {
+    console.log(`  ${s.id}  ${new Date(s.updatedAt).toLocaleString('vi-VN')}  ${String(s.messages.length).padStart(3)} tin  ${s.title || '(chua co noi dung)'}`);
+  }
+  console.log('\nMo lai: pe chat --resume <id> (hoac --resume de lay phien gan nhat)');
+}
+
 const COMMANDS = {
   init: runInit,
   ask: runAsk,
@@ -161,6 +209,10 @@ const COMMANDS = {
   do: runDo,
   edit: runEdit,
   undo: runUndo,
+  assign: runAssign,
+  tasks: runTasks,
+  result: runResult,
+  sessions: runSessions,
   doctor: runDoctor,
   model: runModel,
 };

@@ -3,12 +3,14 @@
 // che do agent dung tools trong project (mac dinh bat), duyet 3 muc, undo.
 import readline from 'node:readline';
 import fs from 'node:fs';
-import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
+import { loadConfig, missingFields, loadProjectContext, saveConfig } from '../lib/config.mjs';
 import { chatCompletionStream, listModels, freeOnly, PeError } from '../lib/api.mjs';
 import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
 import { createToolRunner } from '../lib/tools.mjs';
 import { runAgent, AGENT_SYSTEM, extractJsonToolCall } from '../lib/agent.mjs';
 import { restoreLatest, latestBackup } from '../lib/backup.mjs';
+import { createSession, saveSession, loadSession, latestSession } from '../lib/session.mjs';
+import { maybeCompact, withSummary } from '../lib/compact.mjs';
 import path from 'node:path';
 
 const BASE_SYSTEM = 'Ban la pe — tro ly cua nguoi dung trong ung dung fuco-agent, gio dang noi chuyen qua CLI. Tra loi ngan gon, dung trong tam. Nguoi dung la coder (.NET/Angular).';
@@ -24,7 +26,7 @@ Lenh trong chat:
   /tools [on|off]  bat/tat che do agent (dung tools trong project)
   /approval [1|2|3]  muc duyet tool: 1 hoi tat ca, 2 vua (mac dinh), 3 tu do
   /undo [file]     khoi phuc file ve ban truoc khi pe sua
-  /clear           xoa lich su doan nay + dinh kem dang cho
+  /session         xem phien chat hien tai (id, so tin)\n  /clear           xoa lich su doan nay + dinh kem dang cho
   /exit            thoat (hoac Ctrl+C)
 Trong cau co the go @duong-dan de dinh kem ngay file/anh do.
 `;
@@ -42,7 +44,20 @@ export async function runChat(args = [], input = process.stdin, output = process
   let currentModel = cfg.model;
   let approval = cfg.approval;
   let toolsOn = true;
-  const history = []; // user/assistant (khong chua system)
+  // Phien chat: --resume [id] mo lai phien cu (mac dinh la phien gan nhat)
+  let session = null;
+  if (args[0] === '--resume') {
+    session = args[1] ? await loadSession(args[1]) : await latestSession();
+    if (!session) {
+      console.error(args[1] ? `Khong tim thay phien ${args[1]}.` : 'Chua co phien chat nao de mo lai.');
+      process.exitCode = 2;
+      return;
+    }
+    if (session.model) currentModel = session.model;
+  } else {
+    session = await createSession({ cwd: process.cwd(), model: currentModel });
+  }
+  let history = session.messages; // user/assistant (khong chua system)
   let staged = { files: [], images: [] }; // dinh kem cho cho tin nhan tiep theo
 
   const rl = readline.createInterface({ input, output, prompt: 'pe> ' });
@@ -64,11 +79,14 @@ export async function runChat(args = [], input = process.stdin, output = process
   });
 
   console.log(`pe chat — model: ${currentModel}${ctx ? `\nDa nap ngu canh project: ${ctx.path}` : ''}`);
+  console.log(args[0] === '--resume'
+    ? `Da mo lai phien ${session.id} (${history.length} tin${session.summary ? ' + ban tom tat' : ''}).`
+    : `Phien moi: ${session.id} (tu luu, mo lai bang: pe chat --resume)`);
   console.log('Go "/help" de xem lenh, "/exit" de thoat.\n');
   safePrompt();
 
   const buildSystem = () => {
-    let s = BASE_SYSTEM;
+    let s = withSummary(BASE_SYSTEM, session.summary);
     if (ctx) s += `\n\nNgu canh project:\n${ctx.text}`;
     if (toolsOn) s += `\n\n${AGENT_SYSTEM}`;
     return s;
@@ -158,9 +176,15 @@ export async function runChat(args = [], input = process.stdin, output = process
 
     if (line === '/exit' || line === '/quit') break;
     if (line === '/help') { console.log(HELP); safePrompt(); continue; }
+    if (line === '/session') {
+      console.log(`Phien ${session.id} — ${history.length} tin${session.summary ? `, da tom tat ${session.summary.count} tin cu` : ''}, luu tai ~/.pe/sessions/${session.id}.json`);
+      safePrompt(); continue;
+    }
     if (line === '/clear') {
       history.length = 0;
+      session.summary = null;
       staged = { files: [], images: [] };
+      await saveSession(session);
       console.log('(da xoa lich su doan nay va dinh kem dang cho)');
       safePrompt(); continue;
     }
@@ -172,10 +196,9 @@ export async function runChat(args = [], input = process.stdin, output = process
         console.log('Model phai ket thuc bang ":free" (worker chan model khac).');
       } else {
         currentModel = id;
-        const { saveConfig } = await import('../lib/config.mjs');
         try {
           const fresh = await loadConfig();
-          await saveConfig({ workerUrl: fresh.workerUrl, proxySecret: fresh.proxySecret, model: id, approval: fresh.approval });
+          await saveConfig({ workerUrl: fresh.workerUrl, peWorkerUrl: fresh.peWorkerUrl, proxySecret: fresh.proxySecret, model: id, approval: fresh.approval });
           console.log(`Da doi model: ${id} (da luu)`);
         } catch {
           console.log(`Da doi model cho phien nay: ${id} (luu that bai)`);
@@ -238,6 +261,17 @@ export async function runChat(args = [], input = process.stdin, output = process
       safePrompt(); continue;
     }
 
+    // --- auto-compact: rut gon ngu canh neu sap day ---
+    try {
+      const c = await maybeCompact(cfg, { model: currentModel, messages: history, summary: session.summary });
+      if (c.compacted) {
+        history = c.messages;
+        session.messages = history;
+        session.summary = c.summary;
+        console.log(`[Da rut gon ngu canh: tom tat ${c.dropped} tin cu, giu ${history.length} tin gan nhat]`);
+      }
+    } catch { /* loi compact khong chan chat */ }
+
     // --- tin nhan thuong: dinh kem staged + @mention ---
     const mentions = await expandMentions(line);
     let att;
@@ -268,6 +302,8 @@ export async function runChat(args = [], input = process.stdin, output = process
         console.log('Goi y: model dang dung khong nhan anh. Doi sang model vision :free, vi du: /model nvidia/nemotron-3.5-super-vl:free');
       }
     }
+    session.model = currentModel;
+    try { await saveSession(session); } catch { /* luu phien loi khong chan chat */ }
     safePrompt();
   }
   rl.close();
