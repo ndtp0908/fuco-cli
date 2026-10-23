@@ -445,6 +445,15 @@ async function main() {
   r = await runCli(['restore', bakFile, '--force'], { PE_HOME: homeR, PE_BACKUP_PASSWORD: 'sai-pass' });
   ok('restore sai mat khau bi chan', r.code === 1, `code=${r.code}`);
 
+  // 26. Goi y chung chi tu ky khi mang cong ty chan TLS
+  {
+    const { certHint } = await import('../src/lib/api.mjs');
+    const e = new Error('x');
+    e.cause = { code: 'SELF_SIGNED_CERT_IN_CHAIN', message: 'self-signed certificate in certificate chain' };
+    ok('certHint bao NODE_EXTRA_CA_CERTS khi gap SELF_SIGNED_CERT_IN_CHAIN', certHint(e).includes('NODE_EXTRA_CA_CERTS'), certHint(e).slice(0, 60));
+    ok('certHint rong voi loi thuong', certHint(new Error('boom')) === '', 'phai la chuoi rong');
+  }
+
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);
 

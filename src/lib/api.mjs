@@ -45,8 +45,7 @@ export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs =
       signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    const msg = e?.cause?.code || e?.name || 'network error';
-    throw new PeError('network', `Khong noi duoc toi worker (${msg}). Kiem tra URL va mang.`);
+    throw networkError(e);
   }
   const data = await readBody(res);
 
@@ -65,6 +64,23 @@ export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs =
     throw new PeError('http', `Worker tra loi ${res.status}: ${m}`, res.status);
   }
   return data;
+}
+
+/** Goi y khi gap loi chung chi tu ky (proxy cong ty chan TLS) — de xuat tu loi
+ * SELF_SIGNED_CERT_IN_CHAIN ma chong iu gap tren may cong ty (2026-10-23). */
+export function certHint(e) {
+  const code = String(e?.cause?.code || e?.code || '');
+  const msg = String(e?.cause?.message || e?.message || '');
+  if (!/SELF_SIGNED_CERT_IN_CHAIN/i.test(code + ' ' + msg)) return '';
+  return '\nGoi y: mang cong ty dang chan TLS bang proxy tu ky chung chi. ' +
+    'Lay file CA cua cong ty (tu IT, hoac export tu trinh duyet), roi dat bien moi truong ' +
+    'NODE_EXTRA_CA_CERTS=<duong-dan-file-ca.cer>, mo terminal MOI va chay lai. ' +
+    'Test nhanh trong 1 terminal: set NODE_EXTRA_CA_CERTS=C:\\path\\ca.cer && pe doctor';
+}
+
+function networkError(e) {
+  const msg = e?.cause?.code || e?.name || 'network error';
+  return new PeError('network', `Khong noi duoc toi worker (${msg}). Kiem tra URL va mang.${certHint(e)}`);
 }
 
 function checkModel(useModel) {
@@ -168,8 +184,7 @@ async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeout
       signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
-    const msg = e?.cause?.code || e?.name || 'network error';
-    throw new PeError('network', `Khong noi duoc toi worker (${msg}). Kiem tra URL va mang.`);
+    throw networkError(e);
   }
   const ct = (res.headers.get('content-type') || '').toLowerCase();
   if (!ct.includes('text/event-stream')) {

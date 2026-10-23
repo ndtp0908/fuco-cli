@@ -74,6 +74,8 @@ Trong chat còn có: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model
 
 ## Mượt mà hơn (v0.4.0 — 3 gói cải tiến)
 
+**v0.5.1:** loi mang tu hien goi y cu the (SELF_SIGNED_CERT_IN_CHAIN → huong dan NODE_EXTRA_CA_CERTS).
+
 **v0.5.0:** `pe backup [--out]` / `pe restore <file> [--force]` — đóng gói toàn bộ trạng thái (cấu hình + mọi phiên chat + việc đã giao) thành 1 file `.pebak` mã hoá bằng mật khẩu; máy mới restore là nguyên trạng.
 
 **Máy công ty (gói A):**
@@ -92,7 +94,7 @@ Trong chat còn có: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model
 ## Kiểm tra
 
 ```bash
-npm test   # 57 ca: config/env/project override, mock worker (sai secret, model non-free,
+npm test   # 59 ca: config/env/project override, mock worker (sai secret, model non-free,
            # mất mạng), streaming SSE, đính kèm file/ảnh/@mention/stdin, help chi tiết,
            # pe edit + undo, agent pe do (đọc→sửa file), glob list_files, chat đa-tool JSON
 ```

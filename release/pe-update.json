@@ -1,7 +1,7 @@
 {
-  "version": "0.5.0",
-  "exeUrl": "https://drive.google.com/uc?export=download&id=11r9LNeTNxvPZfJzVdRTIC6OXltWcwgaF",
-  "sha256": "abbdba8c4a21c10cf41a2d5807636d9208abf09295b9a0e95fdbb1aef1bcac62",
-  "size": 94157312,
-  "notes": "v0.5.0: pe backup / pe restore — dong goi toan bo trang thai (cau hinh + phien chat) thanh file ma hoa, mang sang may moi khoi phuc nguyen trang."
+  "version": "0.5.1",
+  "exeUrl": "https://drive.google.com/uc?export=download&id=1A2--FhN95VctiTts8puf3WNoHwxIP2x8",
+  "sha256": "c3415bebee250c5a003785cf9cd3110b3133901b4d90f8d2e4278f7b5d019f9c",
+  "size": 94157824,
+  "notes": "v0.5.1: loi mang tu hien goi y cu the — gap SELF_SIGNED_CERT_IN_CHAIN (proxy cong ty chan TLS) thi CLI tu chi cach dat NODE_EXTRA_CA_CERTS."
 }
