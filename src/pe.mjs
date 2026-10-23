@@ -60,13 +60,14 @@ Vi du:
 
 Cu phap:
   pe ask "cau hoi..." [--model <id>] [--system "..."]
-           [--file <path>]... [--image <path>]...
+           [--file <path>]... [--image <path>]... [--web]
 
 Tuy chon:
   --model <id>     dung model khac cho rieng cau nay (phai la :free)
   --system "..."   chi dan vai tro/cach tra loi
   --file <path>    dinh kem file text/code (lap lai duoc, toi da 256 KB/file)
   --image <path>   dinh kem anh png/jpg/gif/webp (model phai co vision)
+  --web            worker tu tim kiem web + chen ket qua/nguon vao cau tra loi
   @duong-dan       go ngay trong cau de dinh kem file/anh do
 
 stdin:  echo "noi dung" | pe ask         -> noi dung stdin la cau hoi
@@ -88,6 +89,7 @@ Trong chat co cac lenh:
   /file <path>     dinh kem file text/code cho tin nhan TIEP THEO
   /image <path>    dinh kem anh cho tin nhan tiep theo
   /attach          xem dinh kem dang cho gui
+  /web [on|off]    bat/tat tim kiem web (mac dinh tat; hoac mo bang: pe chat --web)
   /clear           xoa lich su doan nay + dinh kem dang cho
   /exit            thoat
 Trong cau co the go @duong-dan de dinh kem ngay file/anh do.
@@ -113,7 +115,8 @@ bang tools (read_file/write_file/edit_file/list_files/grep/run_bash).
 Moi lan ghi file deu backup truoc — pe undo khoi phuc duoc.
 
 Cu phap:
-  pe do "<viec>" [--yolo] [--approval 1|2|3]
+  pe do "<viec>" [--yolo] [--approval 1|2|3] [--web]
+  (--web: worker tim web + chen nguon cho cau hoi goc truoc khi agent chay)
 
 Muc duyet:
   1  hoi truoc moi thao tac sua/chay lenh

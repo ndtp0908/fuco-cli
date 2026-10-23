@@ -29,16 +29,18 @@ export function makeConfirm() {
 export async function runDo(args = []) {
   let yolo = false;
   let approval;
+  let web = false;
   const taskParts = [];
   for (let i = 0; i < args.length; i++) {
     const a = args[i];
     if (a === '--yolo') { yolo = true; continue; }
+    if (a === '--web') { web = true; continue; }
     if (a === '--approval') { approval = Number(args[++i]); continue; }
     taskParts.push(a);
   }
   const task = taskParts.join(' ').trim();
   if (!task) {
-    console.error('Dung: pe do "<viec can lam>" [--yolo] [--approval 1|2|3]');
+    console.error('Dung: pe do "<viec can lam>" [--yolo] [--approval 1|2|3] [--web]');
     process.exitCode = 2;
     return;
   }
@@ -56,9 +58,9 @@ export async function runDo(args = []) {
     { role: 'system', content: AGENT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
     { role: 'user', content: task },
   ];
-  console.log(`pe do (muc duyet ${level}${level === 3 ? ' — yolo' : ''}): ${task}\n`);
+  console.log(`pe do (muc duyet ${level}${level === 3 ? ' — yolo' : ''}${web ? ', web: bat' : ''}): ${task}\n`);
   try {
-    const { text } = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent });
+    const { text } = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, web });
     console.log(`\npe: ${text}`);
   } catch (e) {
     console.error(`Loi: ${e.message}`);

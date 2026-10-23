@@ -136,6 +136,7 @@ function startMock() {
           } else if (typeof lastContent === 'string' && lastContent.includes('MARKER-FILE-CONTENT')) {
             reply = 'MOCK-FILE-OK';
           }
+          if (parsed?.web === true) reply = 'WEB-FLAG-OK';
           if (parsed?.stream) {
             res.writeHead(200, { 'Content-Type': 'text/event-stream' });
             const third = Math.max(1, Math.ceil(reply.length / 3));
@@ -500,6 +501,16 @@ async function main() {
     ok('certHint bao NODE_EXTRA_CA_CERTS khi gap SELF_SIGNED_CERT_IN_CHAIN', certHint(e).includes('NODE_EXTRA_CA_CERTS'), certHint(e).slice(0, 60));
     ok('certHint rong voi loi thuong', certHint(new Error('boom')) === '', 'phai la chuoi rong');
   }
+
+  // 27. --web: co web:true gui len worker (v0.7, WEB1)
+  r = await runCli(['ask', '--web', 'WEB-TASK tin moi nhat'], menv);
+  ok('ask --web gui web:true len worker', r.code === 0 && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 80)}`);
+  r = await runCli(['ask', 'WEB-TASK tin moi nhat'], menv);
+  ok('ask khong --web thi khong co co web', r.code === 0 && r.out.includes('MOCK-REPLY-OK') && !r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 80)}`);
+  r = await runCli(['chat'], menv, '/web on\nWEBCHAT cau hoi web\n/exit\n', { cwd: projChat });
+  ok('chat /web on -> luot hoi co web:true', r.code === 0 && r.out.includes('Tim kiem web: BAT') && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 160)}`);
+  r = await runCli(['do', 'WEBDO viec can web', '--web'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projLoop });
+  ok('do --web gui web:true o lan goi dau', r.code === 0 && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 120)}`);
 
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);

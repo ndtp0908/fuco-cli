@@ -118,7 +118,7 @@ function parseToolCalls(message) {
 }
 
 /** Goi chat completions, tra ve text + tool calls (neu model dung native tools). */
-export async function chatCompletion(cfg, { model, messages, temperature, maxTokens, tools, signal } = {}) {
+export async function chatCompletion(cfg, { model, messages, temperature, maxTokens, tools, signal, web } = {}) {
   const chain = modelChain(cfg, model);
   let lastErr = null;
   for (const useModel of chain) {
@@ -127,6 +127,7 @@ export async function chatCompletion(cfg, { model, messages, temperature, maxTok
       if (temperature !== undefined) body.temperature = temperature;
       if (maxTokens !== undefined) body.max_tokens = maxTokens;
       if (tools) body.tools = tools;
+      if (web) body.web = true; // worker tu tim web + chen nguon (WEB1)
       const data = await apiFetch(cfg, '/api/chat', { method: 'POST', body, timeoutMs: 180000, signal });
       const message = data?.choices?.[0]?.message;
       const text = typeof message?.content === 'string' ? message.content : '';
@@ -170,7 +171,7 @@ export async function chatCompletionStream(cfg, opts = {}) {
   throw lastErr;
 }
 
-async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeoutMs = 240000, signal } = {}) {
+async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeoutMs = 240000, signal, web } = {}) {
   const useModel = model || cfg.model;
   checkModel(useModel);
   if (!cfg.workerUrl) throw new PeError('config', 'Chua co workerUrl. Chay `pe init` de cau hinh.');
@@ -180,7 +181,7 @@ async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeout
     res = await fetch(cfg.workerUrl + '/api/chat', {
       method: 'POST',
       headers: { 'x-proxy-auth': cfg.proxySecret, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ model: useModel, messages, stream: true }),
+      body: JSON.stringify({ model: useModel, messages, stream: true, ...(web ? { web: true } : {}) }),
       signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {

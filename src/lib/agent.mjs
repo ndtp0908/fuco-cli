@@ -102,16 +102,21 @@ export function callKey(name, args) {
  * - firstReply: (tuy chon) ket qua chatCompletion da goi san cho buoc dau (chat streaming dung).
  * Tra ve { text, steps, stopped: null | 'loop' | 'cap' }.
  */
-export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps = 60, stallLimit = 3, seen, firstReply, signal } = {}) {
+export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps = 60, stallLimit = 3, seen, firstReply, signal, web } = {}) {
   const note = (t) => { if (onEvent) onEvent('note', t); };
   const seenMap = seen || new Map();
   let steps = 0;
   let stall = 0;
   let reply = firstReply || null;
+  // Web search chi ap cho lan goi DAU cua luot (cau hoi goc cua nguoi
+  // dung); cac buoc agent sau do tin nhan cuoi la ket qua tool — tim web
+  // theo do chi ton cong va nhieu ngu canh.
+  let webPending = !!web && !firstReply;
 
   for (;;) {
     if (!reply) {
-      reply = await chatCompletion(cfg, { model, messages, tools: TOOL_DEFS, signal });
+      reply = await chatCompletion(cfg, { model, messages, tools: TOOL_DEFS, signal, web: webPending });
+      webPending = false;
     }
     const calls = [];
     if (reply.toolCalls && reply.toolCalls.length) {

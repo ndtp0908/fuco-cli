@@ -58,13 +58,14 @@ function parseArgs(args) {
     else if (a.startsWith('--file=')) out.files.push(a.slice(7));
     else if (a === '--image' && args[i + 1]) out.images.push(args[++i]);
     else if (a.startsWith('--image=')) out.images.push(a.slice(8));
+    else if (a === '--web') out.web = true;
     else out.promptParts.push(a);
   }
   return out;
 }
 
 export async function runAsk(args) {
-  const { promptParts, model, system, files, images } = parseArgs(args);
+  const { promptParts, model, system, files, images, web } = parseArgs(args);
   let prompt = promptParts.join(' ').trim();
 
   let stdinText = '';
@@ -77,7 +78,7 @@ export async function runAsk(args) {
     stdinText = '';
   }
   if (!prompt && !files.length && !images.length) {
-    console.error('Dung: pe ask "cau hoi..." [--model <id>] [--system "..."] [--file <path>] [--image <path>]');
+    console.error('Dung: pe ask "cau hoi..." [--model <id>] [--system "..."] [--file <path>] [--image <path>] [--web]');
     process.exitCode = 2;
     return;
   }
@@ -121,6 +122,7 @@ export async function runAsk(args) {
     const r = await chatCompletionStream(cfg, {
       model,
       messages,
+      web,
       onToken: (t) => process.stdout.write(t),
     });
     process.stdout.write('\n');

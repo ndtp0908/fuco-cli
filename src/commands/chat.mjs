@@ -25,6 +25,7 @@ Lenh trong chat:
   /image <path>    dinh kem anh cho tin nhan tiep theo
   /attach          xem dinh kem dang cho gui
   /tools [on|off]  bat/tat che do agent (dung tools trong project)
+  /web [on|off]    bat/tat tim kiem web (worker tu tim + chen nguon vao cau tra loi)
   /approval [1|2|3]  muc duyet tool: 1 hoi tat ca, 2 vua (mac dinh), 3 tu do
   /undo [file]     khoi phuc file ve ban truoc khi pe sua
   /session         xem phien chat hien tai (id, so tin)
@@ -46,6 +47,7 @@ export async function runChat(args = [], input = process.stdin, output = process
   let currentModel = cfg.model;
   let approval = cfg.approval;
   let toolsOn = true;
+  let webOn = args.includes('--web');
   // Phien chat: --resume [id] mo lai phien cu; mac dinh tu noi phien cua
   // chinh project nay (Goi C7); --new ep tao phien moi.
   let session = null;
@@ -92,7 +94,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     }
   });
 
-  console.log(`pe chat — model: ${currentModel}${ctx ? `\nDa nap ngu canh project: ${ctx.path}` : ''}`);
+  console.log(`pe chat — model: ${currentModel}${webOn ? ' | web: bat' : ''}${ctx ? `\nDa nap ngu canh project: ${ctx.path}` : ''}`);
   console.log(resumed
     ? `Da mo lai phien ${session.id} cua project nay (${history.length} tin${session.summary ? ' + ban tom tat' : ''}). Go /new neu muon phien moi.`
     : `Phien moi: ${session.id} (tu luu, mo lai bang: pe chat --resume)`);
@@ -137,6 +139,7 @@ export async function runChat(args = [], input = process.stdin, output = process
         model: currentModel,
         messages,
         signal,
+        web: webOn,
         onToken: (t) => { buf += t; output.write(t); },
       });
       output.write('\n');
@@ -149,6 +152,7 @@ export async function runChat(args = [], input = process.stdin, output = process
         model: currentModel,
         messages,
         signal,
+        web: webOn,
         onToken: (t) => {
           buf += t;
           if (!decided) {
@@ -170,7 +174,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       if (e instanceof PeError && (e.kind === 'auth' || e.kind === 'model')) throw e;
       // Stream gap giua chung -> chay agent khong stream
       const runner = createToolRunner({ root: process.cwd(), approval, confirm });
-      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal, seen: agentSeen });
+      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal, seen: agentSeen, web: webOn });
       console.log(text);
       return text;
     }
@@ -194,6 +198,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       firstReply: { text: buf, toolCalls: [] },
       signal,
       seen: agentSeen,
+      web: webOn,
     });
     console.log(text);
     return text;
@@ -261,6 +266,13 @@ export async function runChat(args = [], input = process.stdin, output = process
       if (v === 'on') toolsOn = true;
       else if (v === 'off') toolsOn = false;
       console.log(`Che do agent (tools): ${toolsOn ? 'BAT' : 'TAT'}`);
+      safePrompt(); continue;
+    }
+    if (line.startsWith('/web')) {
+      const v = line.slice(4).trim();
+      if (v === 'on') webOn = true;
+      else if (v === 'off') webOn = false;
+      console.log(`Tim kiem web: ${webOn ? 'BAT (worker tu tim + chen nguon)' : 'TAT'}`);
       safePrompt(); continue;
     }
     if (line.startsWith('/approval')) {
