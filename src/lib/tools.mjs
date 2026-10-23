@@ -10,7 +10,7 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'read_file',
-      description: 'Doc noi dung file text trong project.',
+      description: 'Doc noi dung file text trong project, theo doan (toi da 400 dong/lan doc; cuoi ket qua co ghi start de doc tiep doan sau).',
       parameters: {
         type: 'object',
         properties: {
@@ -99,6 +99,23 @@ export const TOOL_DEFS = [
 
 const SKIP_DIRS = new Set(['node_modules', '.git', 'bin', 'obj', 'dist', '.pe', '.vs', '.idea', 'target', '__pycache__']);
 const MAX_RESULT = 9000;
+// read_file doc theo doan (v0.6): toi da 400 dong va ~16000 ky tu cho 1
+// lan goi, cat tai bien dong + ghi ro cach doc tiep. Ban cu dung cap()
+// 9000 ky tu cat cut giua dong (~200 dong code/lan) khien viec doc file
+// dai dot tran buoc cua agent va bi bao "lap" oan.
+const READ_MAX_LINES = 400;
+const READ_MAX_CHARS = 16000;
+
+/** Model hay boc pattern grep trong dau ngoac kep: bo lop ngoac boc ngoai. */
+export function normalizeGrepPattern(p) {
+  const s = String(p ?? '');
+  const t = s.trim();
+  if (t.length >= 2) {
+    const q = t[0];
+    if ((q === '"' || q === "'") && t[t.length - 1] === q && !t.slice(1, -1).includes(q)) return t.slice(1, -1);
+  }
+  return s;
+}
 
 function cap(s) {
   s = String(s ?? '');
@@ -191,10 +208,28 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
       const abs = resolveInside(args.path);
       const raw = await fs.readFile(abs, 'utf8');
       const lines = raw.split('\n');
+      const total = lines.length;
       const start = Math.max(1, Number(args.start) || 1);
-      const end = Math.min(lines.length, Number(args.end) || lines.length);
-      const slice = lines.slice(start - 1, end);
-      return cap(`File ${args.path} (${lines.length} dong), dong ${start}-${end}:\n` + slice.map((l, i) => `${start + i}: ${l}`).join('\n'));
+      if (start > total) return `File ${args.path} chi co ${total} dong — khong co dong ${start}.`;
+      let wantEnd = Number(args.end) || Math.min(total, start + READ_MAX_LINES - 1);
+      wantEnd = Math.min(total, Math.max(start, wantEnd));
+      // Cat tai bien dong theo tran ky tu (1 dong dai bat thuong thi cat
+      // rieng dong do chu khong de trong ket qua).
+      const picked = [];
+      let chars = 0;
+      for (let i = start - 1; i < wantEnd; i++) {
+        let line = lines[i];
+        if (line.length > READ_MAX_CHARS) line = line.slice(0, READ_MAX_CHARS) + ' ...(dong qua dai, da cat)';
+        if (picked.length && chars + line.length + 1 > READ_MAX_CHARS) break;
+        picked.push(line);
+        chars += line.length + 1;
+      }
+      const last = start + picked.length - 1;
+      let out = `File ${args.path} (${total} dong), dong ${start}-${last}:\n` + picked.map((l, i) => `${start + i}: ${l}`).join('\n');
+      if (last < total) {
+        out += `\n... Con ${total - last} dong chua doc. Doc tiep: read_file {"path": "${args.path}", "start": ${last + 1}}`;
+      }
+      return out;
     },
     async write_file(args) {
       const abs = resolveInside(args.path);
@@ -226,7 +261,7 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
       const all = [];
       await walk(sub, all, 0);
       let re;
-      try { re = new RegExp(String(args.pattern), 'i'); } catch { return 'LOI: pattern khong phai regex hop le.'; }
+      try { re = new RegExp(normalizeGrepPattern(args.pattern), 'i'); } catch { return 'LOI: pattern khong phai regex hop le.'; }
       const hits = [];
       for (const f of all) {
         if (hits.length >= 100) break;

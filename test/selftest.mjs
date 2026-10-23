@@ -95,6 +95,23 @@ function startMock() {
             const mm = String(lastContent || '').match(/```\n([\s\S]*?)\n```/);
             const fc = mm ? mm[1] : '';
             reply = '```\n' + fc.replace('ORIGINAL', 'EDITED') + '\n```';
+          } else if (allText.includes('LOOP-TASK')) {
+            // Lap that: luc nao cung goi dung 1 tool giong het -> agent phai
+            // tu phat hien lap va dung sau stallLimit lan trung.
+            reply = '```json\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
+          } else if (allText.includes('PAGE-TASK')) {
+            // Doc file dai theo doan: lan dau doc tu dau, cac lan sau doc
+            // tiep theo "start" o footer cua ket qua tool gan nhat; doc
+            // het (thay dong cuoi) thi tra loi xong.
+            const lastStr = typeof lastContent === 'string' ? lastContent : '';
+            const foot = lastStr.match(/Doc tiep: read_file \{"path": "big\.txt", "start": (\d+)\}/);
+            if (foot) {
+              reply = '```json\n' + JSON.stringify({ tool: 'read_file', args: { path: 'big.txt', start: Number(foot[1]) } }) + '\n```';
+            } else if (lastStr.includes('LINE-2500')) {
+              reply = 'PAGE-DONE';
+            } else {
+              reply = '```json\n{"tool": "read_file", "args": {"path": "big.txt"}}\n```';
+            }
           } else if (allText.includes('Ket qua tool') && allText.includes('Da sua')) {
             reply = 'AGENT-DONE';
           } else if (allText.includes('Ket qua tool') && allText.includes('ORIGINAL-CONTENT')) {
@@ -319,6 +336,24 @@ async function main() {
   r = await runCli(['do', 'LIST-TASK liet ke file txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projList });
   ok('list_files **/*.txt thay du 2 file (goc + sub)', r.code === 0 && r.out.includes('LIST-DONE') && r.out.includes('2 file:'), `code=${r.code} out=${r.out.slice(0, 140)}`);
 
+  // 14b. phat hien lap theo tien trien (v0.6): lap that thi dung som,
+  // doc file dai phan trang thi KHONG bi cat ngang nhu ban cu (maxSteps 14)
+  const projLoop = path.join(tmpHome, 'proj-loop');
+  await fs.mkdir(projLoop, { recursive: true });
+  await fs.writeFile(path.join(projLoop, 'a.txt'), 'LOOPFILE-CONTENT');
+  r = await runCli(['do', 'LOOP-TASK doc a.txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projLoop });
+  const loopCalls = (r.out.match(/doc file a\.txt/g) || []).length;
+  ok('agent tu phat hien lap that va dung som (<=6 luot goi trung)', r.code === 0 && r.out.includes('Phat hien vong lap') && loopCalls > 0 && loopCalls <= 6, `code=${r.code} calls=${loopCalls} out=${r.out.slice(0, 140)}`);
+
+  const projPage = path.join(tmpHome, 'proj-page');
+  await fs.mkdir(projPage, { recursive: true });
+  const bigLines = [];
+  for (let i = 1; i <= 2500; i++) bigLines.push(`LINE-${i} ${'x'.repeat(50)}`);
+  await fs.writeFile(path.join(projPage, 'big.txt'), bigLines.join('\n'));
+  r = await runCli(['do', 'PAGE-TASK doc het big.txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projPage });
+  const pageCalls = (r.out.match(/doc file big\.txt/g) || []).length;
+  ok('doc file 2500 dong phan trang chay het, khong bao lap oan', r.code === 0 && r.out.includes('PAGE-DONE') && !r.out.includes('Phat hien vong lap') && pageCalls >= 5, `code=${r.code} calls=${pageCalls} out=${r.out.slice(0, 140)}`);
+
   // 15. assign + result qua mock KV
   const menvKV = { ...menv, PE_PE_WORKER_URL: mockUrl };
   r = await runCli(['assign', 'ASSIGN-TEST xem giup'], menvKV);
@@ -444,6 +479,18 @@ async function main() {
   ok('restore khoi phuc config + phien', r.code === 0 && restoredCfg?.proxySecret === SECRET && restoredSessions >= 1, `code=${r.code} sessions=${restoredSessions} out=${r.out.slice(0, 80)}`);
   r = await runCli(['restore', bakFile, '--force'], { PE_HOME: homeR, PE_BACKUP_PASSWORD: 'sai-pass' });
   ok('restore sai mat khau bi chan', r.code === 1, `code=${r.code}`);
+
+  // 25b. grep bo ngoac boc + dong thoi gian chen system prompt (v0.6)
+  {
+    const { normalizeGrepPattern } = await import('../src/lib/tools.mjs');
+    ok('grep bo ngoac kep boc ngoai', normalizeGrepPattern('"abc"') === 'abc', normalizeGrepPattern('"abc"'));
+    ok('grep bo ngoac don boc ngoai', normalizeGrepPattern("'a b'") === 'a b', normalizeGrepPattern("'a b'"));
+    ok('grep giu nguyen pattern co ngoac ben trong', normalizeGrepPattern('"a"b"') === '"a"b"', normalizeGrepPattern('"a"b"'));
+    ok('grep giu nguyen pattern thuong', normalizeGrepPattern('a"b') === 'a"b', normalizeGrepPattern('a"b'));
+    const { currentTimeLine } = await import('../src/lib/now.mjs');
+    const tl = currentTimeLine(new Date(2026, 9, 23, 15, 4));
+    ok('currentTimeLine co ngay/thang/nam dung', tl.includes('23/10/2026') && tl.includes('Thoi gian hien tai'), tl.slice(0, 80));
+  }
 
   // 26. Goi y chung chi tu ky khi mang cong ty chan TLS
   {

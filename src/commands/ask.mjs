@@ -7,6 +7,7 @@
 import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
 import { chatCompletionStream, PeError } from '../lib/api.mjs';
 import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
+import { currentTimeLine } from '../lib/now.mjs';
 
 /**
  * Doc stdin. Khi DA CO prompt (graceMs > 0): chi cho stdin 300ms de
@@ -111,6 +112,7 @@ export async function runAsk(args) {
   const messages = [];
   const sysParts = [];
   if (system) sysParts.push(system);
+  sysParts.push(currentTimeLine());
   if (ctx) sysParts.push('Ngu canh project:\n' + ctx.text);
   if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
   messages.push({ role: 'user', content: buildUserContent(prompt, att) });

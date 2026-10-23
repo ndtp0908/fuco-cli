@@ -1,7 +1,1 @@
-{
-  "version": "0.5.1",
-  "exeUrl": "https://drive.google.com/uc?export=download&id=1A2--FhN95VctiTts8puf3WNoHwxIP2x8",
-  "sha256": "c3415bebee250c5a003785cf9cd3110b3133901b4d90f8d2e4278f7b5d019f9c",
-  "size": 94157824,
-  "notes": "v0.5.1: loi mang tu hien goi y cu the — gap SELF_SIGNED_CERT_IN_CHAIN (proxy cong ty chan TLS) thi CLI tu chi cach dat NODE_EXTRA_CA_CERTS."
-}
+{"exeUrl":"https://drive.google.com/uc?export=download&id=1ZubBYQ-5C0CYNp9twXZgisYAXPqYZMBE","notes":"v0.6.0: sua triet de vu bao lap oan khi doc file dai — phat hien lap theo tien trien (goi trung + ket qua trung moi tinh la lap), doc file theo doan 400 dong/~16K ky tu co ghi start doc tiep, tran agent nang len 60 luot; grep tu bo ngoac boc pattern; chen ngay gio hien tai vao system prompt (het bia ngay).","sha256":"39a9aa0d6c28064ba82b0ec18237d9cdde42e466faa8e90175bb866663f63f44","size":94161408,"version":"0.6.0"}

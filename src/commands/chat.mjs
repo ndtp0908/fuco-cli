@@ -11,6 +11,7 @@ import { runAgent, AGENT_SYSTEM, extractJsonToolCall } from '../lib/agent.mjs';
 import { restoreLatest, latestBackup } from '../lib/backup.mjs';
 import { createSession, saveSession, loadSession, latestSession, listSessions } from '../lib/session.mjs';
 import { maybeCompact, withSummary } from '../lib/compact.mjs';
+import { currentTimeLine } from '../lib/now.mjs';
 import path from 'node:path';
 
 const BASE_SYSTEM = 'Ban la pe — tro ly cua nguoi dung trong ung dung fuco-agent, gio dang noi chuyen qua CLI. Tra loi ngan gon, dung trong tam. Nguoi dung la coder (.NET/Angular).';
@@ -68,6 +69,10 @@ export async function runChat(args = [], input = process.stdin, output = process
   if (resumed && session.model) currentModel = session.model;
   let history = session.messages; // user/assistant (khong chua system)
   let staged = { files: [], images: [] }; // dinh kem cho cho tin nhan tiep theo
+  // Ban do tool da goi trong PHIEN nay (dung chung cho moi luot chat):
+  // runAgent dung no de phat hien lap ca XUYEN LUOT — truoc day moi luot
+  // go "tiep tuc" la bo dem buoc reset tu dau nen doc lai tu dau mai.
+  const agentSeen = new Map();
 
   const rl = readline.createInterface({ input, output, prompt: 'pe> ' });
   let rlClosed = false;
@@ -112,6 +117,7 @@ export async function runChat(args = [], input = process.stdin, output = process
 
   const buildSystem = () => {
     let s = withSummary(BASE_SYSTEM, session.summary);
+    s += `\n\n${currentTimeLine()}`;
     if (ctx) s += `\n\nNgu canh project:\n${ctx.text}`;
     if (toolsOn) s += `\n\n${AGENT_SYSTEM}`;
     return s;
@@ -164,7 +170,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       if (e instanceof PeError && (e.kind === 'auth' || e.kind === 'model')) throw e;
       // Stream gap giua chung -> chay agent khong stream
       const runner = createToolRunner({ root: process.cwd(), approval, confirm });
-      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal });
+      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal, seen: agentSeen });
       console.log(text);
       return text;
     }
@@ -187,6 +193,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       onEvent: agentEvent,
       firstReply: { text: buf, toolCalls: [] },
       signal,
+      seen: agentSeen,
     });
     console.log(text);
     return text;
@@ -207,6 +214,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     if (line === '/new') {
       session = await createSession({ cwd: process.cwd(), model: currentModel });
       history = session.messages;
+      agentSeen.clear();
       console.log(`Phien moi: ${session.id}`);
       safePrompt(); continue;
     }
@@ -217,6 +225,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     if (line === '/clear') {
       history.length = 0;
       session.summary = null;
+      agentSeen.clear();
       staged = { files: [], images: [] };
       await saveSession(session);
       console.log('(da xoa lich su doan nay va dinh kem dang cho)');
@@ -341,7 +350,6 @@ export async function runChat(args = [], input = process.stdin, output = process
       }
       }
     }
-    turnAbort = null;
     turnAbort = null;
     session.model = currentModel;
     try { await saveSession(session); } catch { /* luu phien loi khong chan chat */ }

@@ -4,6 +4,7 @@ import readline from 'node:readline';
 import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs';
 import { createToolRunner } from '../lib/tools.mjs';
 import { runAgent, AGENT_SYSTEM } from '../lib/agent.mjs';
+import { currentTimeLine } from '../lib/now.mjs';
 
 export function printAgentEvent(type, data) {
   if (type === 'tool') console.log(`  [tool] ${data.desc} ...`);
@@ -52,7 +53,7 @@ export async function runDo(args = []) {
   const ctx = await loadProjectContext();
   const runner = createToolRunner({ root: process.cwd(), approval: level, confirm: makeConfirm() });
   const messages = [
-    { role: 'system', content: AGENT_SYSTEM + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
+    { role: 'system', content: AGENT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
     { role: 'user', content: task },
   ];
   console.log(`pe do (muc duyet ${level}${level === 3 ? ' — yolo' : ''}): ${task}\n`);

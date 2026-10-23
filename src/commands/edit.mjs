@@ -8,6 +8,7 @@ import { loadConfig, missingFields, loadProjectContext } from '../lib/config.mjs
 import { chatCompletion } from '../lib/api.mjs';
 import { formatDiff } from '../lib/diff.mjs';
 import { backupFile, restoreLatest, latestBackup } from '../lib/backup.mjs';
+import { currentTimeLine } from '../lib/now.mjs';
 
 const EDIT_SYSTEM = 'Ban la cong cu sua file. Nguoi dung dua yeu cau va toan bo noi dung file hien tai. Hay tra ve DUY NHAT 1 khoi ma chua TOAN BO noi dung file sau khi sua (giai thich). Giu nguyen phan khong lien quan.';
 
@@ -67,7 +68,7 @@ export async function runEdit(args = []) {
   }
   const ctx = await loadProjectContext();
   const messages = [
-    { role: 'system', content: EDIT_SYSTEM + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
+    { role: 'system', content: EDIT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
     { role: 'user', content: `Yeu cau: ${instruction}\n\nFile ${path.basename(abs)} hien tai:\n\`\`\`\n${original}\n\`\`\`` },
   ];
   process.stdout.write('Dang nghi cach sua... ');
