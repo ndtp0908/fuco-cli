@@ -29,7 +29,7 @@ function isFake404(res, body) {
 }
 
 /** fetch thap: gan header auth, phan loai loi ro rang. */
-export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs = 15000 } = {}) {
+export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs = 15000, signal } = {}) {
   if (!cfg.workerUrl) throw new PeError('config', 'Chua co workerUrl. Chay `pe init` de cau hinh.');
   if (!cfg.proxySecret) throw new PeError('config', 'Chua co proxySecret. Chay `pe init` de cau hinh.');
   const url = cfg.workerUrl + apiPath;
@@ -42,7 +42,7 @@ export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs =
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
       body: body ? JSON.stringify(body) : undefined,
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
     const msg = e?.cause?.code || e?.name || 'network error';
@@ -73,6 +73,25 @@ function checkModel(useModel) {
   }
 }
 
+/** Danh sach model thu lan luot: model chinh + cac model du phong (Goi B).
+ * Model chinh ma khong phai :free la LOI CAU HINH — nem ngay, khong fallback. */
+export function modelChain(cfg, requested) {
+  const first = requested || cfg.model;
+  checkModel(first);
+  const chain = [first, ...(cfg.fallbackModels || [])];
+  return [...new Set(chain)].filter((m) => m && String(m).endsWith(':free'));
+}
+
+/** Loi nao thi nen thu model khac (nghen/het luot/sap) — khong phai loi cau hinh. */
+export function shouldFallback(err) {
+  if (!err) return false;
+  if (err.kind === 'network') return true;
+  if (err.kind === 'http' && (err.status === 429 || err.status >= 500)) return true;
+  // Model chet/doi ten: OpenRouter tra 400/404 kem thong diep ve model
+  if (err.kind === 'http' && /not a valid model|model[^.]*not found|no endpoints/i.test(err.message || '')) return true;
+  return /no endpoints|rate.?limit|overloaded|too many requests|temporarily unavailable|resourceexhausted|provider_unavailable/i.test(err.message || '');
+}
+
 function parseToolCalls(message) {
   const raw = Array.isArray(message?.tool_calls) ? message.tool_calls : [];
   return raw.map((tc) => {
@@ -83,21 +102,31 @@ function parseToolCalls(message) {
 }
 
 /** Goi chat completions, tra ve text + tool calls (neu model dung native tools). */
-export async function chatCompletion(cfg, { model, messages, temperature, maxTokens, tools } = {}) {
-  const useModel = model || cfg.model;
-  checkModel(useModel);
-  const body = { model: useModel, messages };
-  if (temperature !== undefined) body.temperature = temperature;
-  if (maxTokens !== undefined) body.max_tokens = maxTokens;
-  if (tools) body.tools = tools;
-  const data = await apiFetch(cfg, '/api/chat', { method: 'POST', body, timeoutMs: 180000 });
-  const message = data?.choices?.[0]?.message;
-  const text = typeof message?.content === 'string' ? message.content : '';
-  const toolCalls = parseToolCalls(message);
-  if (!text && !toolCalls.length) {
-    throw new PeError('http', 'Worker tra ve dinh dang la (thieu choices[0].message.content).');
+export async function chatCompletion(cfg, { model, messages, temperature, maxTokens, tools, signal } = {}) {
+  const chain = modelChain(cfg, model);
+  let lastErr = null;
+  for (const useModel of chain) {
+    try {
+      const body = { model: useModel, messages };
+      if (temperature !== undefined) body.temperature = temperature;
+      if (maxTokens !== undefined) body.max_tokens = maxTokens;
+      if (tools) body.tools = tools;
+      const data = await apiFetch(cfg, '/api/chat', { method: 'POST', body, timeoutMs: 180000, signal });
+      const message = data?.choices?.[0]?.message;
+      const text = typeof message?.content === 'string' ? message.content : '';
+      const toolCalls = parseToolCalls(message);
+      if (!text && !toolCalls.length) {
+        throw new PeError('http', 'Worker tra ve dinh dang la (thieu choices[0].message.content).');
+      }
+      return { text, toolCalls, model: useModel, fellBack: useModel !== chain[0], raw: data };
+    } catch (e) {
+      lastErr = e;
+      if (signal?.aborted) throw e;
+      if (!shouldFallback(e)) throw e;
+      // thu model tiep theo trong danh sach du phong
+    }
   }
-  return { text, toolCalls, model: useModel, raw: data };
+  throw lastErr;
 }
 
 /**
@@ -105,7 +134,27 @@ export async function chatCompletion(cfg, { model, messages, temperature, maxTok
  * onToken(chunk) duoc goi cho tung mau text. Tra ve toan van khi xong.
  * Loi auth/model/http duoc phan loai giong apiFetch truoc khi stream mo.
  */
-export async function chatCompletionStream(cfg, { model, messages, onToken, timeoutMs = 240000 } = {}) {
+export async function chatCompletionStream(cfg, opts = {}) {
+  const chain = modelChain(cfg, opts.model);
+  let lastErr = null;
+  for (const useModel of chain) {
+    let emitted = false;
+    try {
+      const r = await chatCompletionStreamOnce(cfg, {
+        ...opts,
+        model: useModel,
+        onToken: (t) => { emitted = true; if (opts.onToken) opts.onToken(t); },
+      });
+      return { ...r, fellBack: useModel !== chain[0] };
+    } catch (e) {
+      lastErr = e;
+      if (emitted || opts.signal?.aborted || !shouldFallback(e)) throw e;
+    }
+  }
+  throw lastErr;
+}
+
+async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeoutMs = 240000, signal } = {}) {
   const useModel = model || cfg.model;
   checkModel(useModel);
   if (!cfg.workerUrl) throw new PeError('config', 'Chua co workerUrl. Chay `pe init` de cau hinh.');
@@ -116,7 +165,7 @@ export async function chatCompletionStream(cfg, { model, messages, onToken, time
       method: 'POST',
       headers: { 'x-proxy-auth': cfg.proxySecret, 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: useModel, messages, stream: true }),
-      signal: AbortSignal.timeout(timeoutMs),
+      signal: signal ? AbortSignal.any([AbortSignal.timeout(timeoutMs), signal]) : AbortSignal.timeout(timeoutMs),
     });
   } catch (e) {
     const msg = e?.cause?.code || e?.name || 'network error';
@@ -144,6 +193,7 @@ export async function chatCompletionStream(cfg, { model, messages, onToken, time
   }
   let full = '';
   let buf = '';
+  let streamError = null;
   const decoder = new TextDecoder();
   const handleLine = (line) => {
     const t = line.trim();
@@ -152,6 +202,11 @@ export async function chatCompletionStream(cfg, { model, messages, onToken, time
     if (!payload || payload === '[DONE]') return;
     try {
       const json = JSON.parse(payload);
+      // Provider co the tra loi ngay trong stream (choices rong + error)
+      if (json?.error) {
+        streamError = { message: json.error.message || 'provider error', code: Number(json.error.code) || undefined };
+        return;
+      }
       const delta = json?.choices?.[0]?.delta?.content;
       if (typeof delta === 'string' && delta) {
         full += delta;
@@ -177,7 +232,24 @@ export async function chatCompletionStream(cfg, { model, messages, onToken, time
     // Da co mot phan noi dung — tra ve phan do, kem ghi chu.
     full += '\n[stream bi dut giua chung]';
   }
+  if (!full && streamError) {
+    throw new PeError('http', `Model loi khi stream: ${streamError.message}`, streamError.code);
+  }
+  if (!full) {
+    throw new PeError('http', 'Model ket thuc stream ma khong tra noi dung (co the dang bi gioi han) — thu lai sau.');
+  }
+  if (streamError) full += `\n[luu y: stream co loi o cuoi: ${streamError.message}]`;
   return { text: full, model: useModel };
+}
+
+/** Lay danh sach model kem thong tin vision (architecture.input_modalities). */
+export async function listModelsDetailed(cfg) {
+  const data = await apiFetch(cfg, '/api/models', { timeoutMs: 20000 });
+  const arr = Array.isArray(data?.data) ? data.data : [];
+  return arr.filter((m) => m?.id).map((m) => ({
+    id: m.id,
+    vision: ((m.architecture?.input_modalities || []).includes('image')),
+  }));
 }
 
 /** Lay danh sach model tu worker. */

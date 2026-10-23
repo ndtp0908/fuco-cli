@@ -26,6 +26,10 @@ function startMock() {
       let body = '';
       req.on('data', (c) => (body += c));
       req.on('end', () => {
+        if (req.url === '/pe-update.json') {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          return res.end(JSON.stringify({ version: '99.0.0', exeUrl: '', sha256: '', size: 0 }));
+        }
         // --- mock pe-worker (hang doi KV) ---
         if (req.url === '/task' || req.url.startsWith('/result/') || req.url === '/pending' || req.url === '/processing') {
           if (req.headers['x-agent-secret'] !== SECRET) {
@@ -34,7 +38,13 @@ function startMock() {
           }
           if (req.url === '/task' && req.method === 'POST') {
             const id = 't_mock123456';
-            mockTasks.set(id, { id, status: 'done', result: { answer: 'MOCK-ANSWER' } });
+            let parsedTask = null;
+            try { parsedTask = JSON.parse(body); } catch {}
+            const q = parsedTask?.input?.question || '';
+            const result = q.includes('APPLY-TEST')
+              ? { answer: 'da sua xong', files: [{ path: 'out.txt', content: 'APPLIED-CONTENT' }] }
+              : { answer: 'MOCK-ANSWER' };
+            mockTasks.set(id, { id, status: 'done', result });
             res.writeHead(200, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({ task_id: id, status: 'queued' }));
           }
@@ -59,7 +69,7 @@ function startMock() {
         }
         if (req.url.startsWith('/api/models') && req.method === 'GET') {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          return res.end(JSON.stringify({ data: [{ id: FREE_MODEL }, { id: 'pro-model' }] }));
+          return res.end(JSON.stringify({ data: [{ id: FREE_MODEL }, { id: 'pro-model' }, { id: 'vis-model:free', architecture: { input_modalities: ['text', 'image'] } }] }));
         }
         if (req.url.startsWith('/api/chat') && req.method === 'POST') {
           let parsed = null;
@@ -72,6 +82,10 @@ function startMock() {
           if (!m || !String(m).endsWith(':free')) {
             res.writeHead(403, { 'Content-Type': 'application/json' });
             return res.end(JSON.stringify({ error: { message: 'Access Denied: Only :free models allowed.' } }));
+          }
+          if (m === 'flaky-model:free') {
+            res.writeHead(429, { 'Content-Type': 'application/json' });
+            return res.end(JSON.stringify({ error: { message: 'Rate limit exceeded' } }));
           }
           let reply = 'MOCK-REPLY-OK';
           if (sysText.includes('Ban tom tat cuoc hoi thoai')) {
@@ -344,6 +358,76 @@ async function main() {
   r = await runCli(['chat', '--resume', 's_seed'], { ...menvSess, PE_CONTEXT_LIMIT: '100' }, 'cau hoi moi\n/exit\n');
   const s3 = JSON.parse(await fs.readFile(path.join(sessDir, 's_seed.json'), 'utf8'));
   ok('auto-compact tom tat tin cu, giu 12 tin gan nhat', r.code === 0 && s3.summary && s3.summary.text === 'TOM-TAT-X' && s3.messages.length <= 14, `code=${r.code} summary=${JSON.stringify(s3.summary)} n=${s3.messages.length}`);
+
+  // 18. Goi A1: connect export -> init --code o home moi
+  r = await runCli(['connect', 'export'], { ...menv, PE_CONNECT_PASSWORD: 'matkhau1' });
+  const codeM = /(PE1\.[A-Za-z0-9_-]+)/.exec(r.out);
+  ok('connect export tao ma PE1.', r.code === 0 && !!codeM, `code=${r.code} out=${r.out.slice(0, 80)}`);
+  if (codeM) {
+    const homeB = path.join(tmpHome, 'home-b');
+    r = await runCli(['init', '--code', codeM[1]], { PE_HOME: homeB, PE_CONNECT_PASSWORD: 'matkhau1' });
+    let cfgB = null;
+    try { cfgB = JSON.parse(await fs.readFile(path.join(homeB, '.pe', 'config.json'), 'utf8')); } catch {}
+    ok('init --code nhap dung cau hinh (worker+secret+model)', r.code === 0 && cfgB && cfgB.workerUrl === mockUrl && cfgB.proxySecret === SECRET, `code=${r.code} cfg=${JSON.stringify(cfgB).slice(0, 100)}`);
+    r = await runCli(['init', '--code', codeM[1]], { PE_HOME: path.join(tmpHome, 'home-c'), PE_CONNECT_PASSWORD: 'sai-roi' });
+    ok('init --code sai mat khau bi chan', r.code === 1, `code=${r.code}`);
+  }
+
+  // 19. Goi B: fallback khi model chinh bi 429
+  r = await runCli(['ask', 'hi'], { ...menv, PE_MODEL: 'flaky-model:free', PE_FALLBACK_MODELS: FREE_MODEL });
+  ok('ask tu chuyen model du phong khi 429', r.code === 0 && r.out.includes('MOCK-REPLY-OK') && r.err.includes('du phong'), `code=${r.code} out=${r.out.slice(0, 60)} err=${r.err.slice(0, 80)}`);
+
+  // 20. model list --vision
+  r = await runCli(['model', 'list', '--vision'], menv);
+  ok('model list --vision loc dung + tag [vision]', r.code === 0 && r.out.includes('vis-model:free') && r.out.includes('[vision]') && !r.out.includes(FREE_MODEL), `out=${r.out.slice(0, 100)}`);
+
+  // 21. Goi A2: update --check thay ban moi
+  r = await runCli(['update', '--check'], { ...menv, PE_UPDATE_URL: mockUrl + '/pe-update.json' });
+  ok('update --check bao co ban moi 99.0.0', r.code === 0 && r.out.includes('99.0.0'), `code=${r.code} out=${r.out.slice(0, 100)}`);
+
+  // 22. Goi A3: result --apply ghi file tu ket qua assign
+  const projApply = path.join(tmpHome, 'proj-apply');
+  await fs.mkdir(projApply, { recursive: true });
+  r = await runCli(['assign', 'APPLY-TEST sua file'], menvKV);
+  const mId2 = /t_[a-z0-9]+/.exec(r.out);
+  if (mId2) {
+    r = await runCli(['result', mId2[0], '--apply', '--yes'], menvKV, '', { cwd: projApply });
+    let applied = '';
+    try { applied = await fs.readFile(path.join(projApply, 'out.txt'), 'utf8'); } catch {}
+    ok('result --apply ghi file APPLIED-CONTENT', r.code === 0 && applied === 'APPLIED-CONTENT', `code=${r.code} file=${applied} out=${r.out.slice(0, 100)}`);
+  } else {
+    ok('result --apply ghi file APPLIED-CONTENT', false, 'khong lay duoc task id');
+  }
+
+  // 23. Goi C: rules install + export + context tu .muserules
+  const projRules = path.join(tmpHome, 'proj-rules');
+  await fs.mkdir(projRules, { recursive: true });
+  r = await runCli(['rules', 'install'], menv, '', { cwd: projRules });
+  let rulesText = '';
+  try { rulesText = await fs.readFile(path.join(projRules, '.muserules'), 'utf8'); } catch {}
+  ok('rules install cai PE-CLINE-PACK', r.code === 0 && rulesText.includes('PE-CLINE-PACK'), `code=${r.code}`);
+  r = await runCli(['init', '--project'], menv, '', { cwd: projRules });
+  r = await runCli(['rules', 'export'], menv, '', { cwd: projRules });
+  try { rulesText = await fs.readFile(path.join(projRules, '.muserules'), 'utf8'); } catch {}
+  ok('rules export dong bo context.md sang .muserules', r.code === 0 && rulesText.includes('Ngu canh project'), `code=${r.code}`);
+  const projRules2 = path.join(tmpHome, 'proj-rules2');
+  await fs.mkdir(projRules2, { recursive: true });
+  await fs.writeFile(path.join(projRules2, '.muserules'), 'Quy tac rieng: CTX-MARKER-123');
+  r = await runCli(['ask', 'hi'], menv, '', { cwd: projRules2 });
+  ok('ask tu nap ca .muserules lam ngu canh', r.code === 0 && r.out.includes('CTX-OK'), `code=${r.code} out=${r.out.slice(0, 60)}`);
+
+  // 24. Goi C7: chat tu noi phien theo project (cung cwd)
+  const projSess = path.join(tmpHome, 'proj-sess');
+  await fs.mkdir(projSess, { recursive: true });
+  r = await runCli(['chat', '--new'], menvSess, 'cau mot\n/exit\n', { cwd: projSess });
+  r = await runCli(['chat'], menvSess, 'cau hai\n/exit\n', { cwd: projSess });
+  const sessFiles2 = (await fs.readdir(sessDir)).filter((f) => f.endsWith('.json'));
+  let resumedOk = false;
+  for (const f of sessFiles2) {
+    const sj = JSON.parse(await fs.readFile(path.join(sessDir, f), 'utf8'));
+    if (sj.cwd === projSess && sj.messages.length === 4) resumedOk = true;
+  }
+  ok('chat tu noi phien cua project (4 tin, khong tao phien thua)', r.code === 0 && resumedOk, `code=${r.code} files=${sessFiles2.length}`);
 
   r = await runCli(['doctor'], menv);
   ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);

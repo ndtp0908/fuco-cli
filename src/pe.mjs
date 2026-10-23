@@ -9,18 +9,11 @@ import { runModel } from './commands/model.mjs';
 import { runEdit, runUndo } from './commands/edit.mjs';
 import { runDo } from './commands/do.mjs';
 import { runAssign, runTasks, runResult } from './commands/assign.mjs';
+import { runConnect } from './commands/connect.mjs';
+import { runUpdate } from './commands/update.mjs';
+import { runRules } from './commands/rules.mjs';
 import { listSessions } from './lib/session.mjs';
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import path from 'node:path';
-
-const VERSION = (() => {
-  try {
-    return JSON.parse(readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'package.json'), 'utf8')).version;
-  } catch {
-    return '0.3.0'; // ban dong goi 1 file (SEA) khong co package.json canh ben
-  }
-})();
+import { VERSION } from './lib/version.mjs';
 
 const HELP = `pe v${VERSION} — CLI tro ly coding (noi voi pe qua fuco-agent worker)
 
@@ -33,6 +26,9 @@ Dung:
   pe edit <file> "<yc>"   sua 1 file theo yeu cau, xem diff roi moi ghi
   pe undo [file]          khoi phuc file ve ban truoc khi pe sua
   pe assign "<viec>"      giao viec dai cho pe qua hang doi (xem pe tasks / pe result)
+  pe connect export       tao ma ket noi ma hoa de cai pe o may khac trong 1 lan dan
+  pe rules                dong bo bo nho project giua pe va Cline (.muserules)
+  pe update               tu cap nhat ban .exe moi nhat
   pe chat --resume        mo lai phien chat gan nhat (phien tu luu o ~/.pe/sessions)
   pe sessions             liet ke cac phien chat da luu
   pe doctor               kiem tra cau hinh + ket noi worker
@@ -153,6 +149,33 @@ Vi du:
   pe undo src\\Calculator.cs
   pe undo`,
 
+  connect: `pe connect — ma ket noi ma hoa (chuyen cau hinh sang may khac)
+
+  pe connect              xem tom tat ket noi hien tai
+  pe connect export       tao ma PE1.... (ma hoa bang mat khau ban dat)
+
+Sang may moi:  pe init --code <ma>  (se hoi mat khau)
+Khoi goi tay tung truong worker URL/secret dai ngoang. Ma chi chua cau
+hinh ket noi — khong chua lich su chat hay du lieu ca nhan.`,
+
+  update: `pe update — tu cap nhat pe.exe
+
+  pe update           kiem tra + tai ban moi (verify SHA256 truoc khi thay)
+  pe update --check   chi kiem tra, khong tai
+
+Nguon manifest mac dinh o repo GitHub cua pe (doi bang PE_UPDATE_URL).
+Chi tu thay file khi chay dang .exe (SEA); chay qua node se bao ban moi
+kem huong dan cap nhat thu cong.`,
+
+  rules: `pe rules — bo nho project dung chung pe + Cline
+
+  pe rules            trang thai .pe/context.md va .muserules
+  pe rules install    cai bo quy tac Cline chuan cua pe vao .muserules
+  pe rules export     dong bo .pe/context.md -> .muserules
+  pe rules import     dong bo .muserules -> .pe/context.md
+
+pe tu nap ca 2 file lam ngu canh — viet 1 cho, hai cong cu deu biet.`,
+
   assign: `pe assign — giao viec dai cho pe qua hang doi KV
 
 Pe nhan viec va xu ly theo chu ky (08:00-16:30, T2-T7). Phu hop viec
@@ -210,6 +233,9 @@ const COMMANDS = {
   edit: runEdit,
   undo: runUndo,
   assign: runAssign,
+  connect: runConnect,
+  update: runUpdate,
+  rules: runRules,
   tasks: runTasks,
   result: runResult,
   sessions: runSessions,

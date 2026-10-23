@@ -1,0 +1,7 @@
+{
+  "version": "0.4.0",
+  "exeUrl": "https://drive.google.com/uc?export=download&id=1FL4RYulsgUKExk9f-o7-Eylrdr1zBef3",
+  "sha256": "e0cece5d2fb0fcfdce66d21710e10c4db74f30995a3b35722df983e32a378d2d",
+  "size": 94152192,
+  "notes": "v0.4.0: ma ket noi (pe connect), pe update, result --apply, model du phong tu dong, pe rules + .muserules, chat tu noi phien theo project, Ctrl+C ngat em."
+}

@@ -7,6 +7,9 @@ import path from 'node:path';
 import { loadConfig, missingFields, configDir } from '../lib/config.mjs';
 import { submitTask, getResult, getTask, listPending, listProcessing, resultText } from '../lib/queue.mjs';
 import { collectAttachments } from '../lib/attach.mjs';
+import { formatDiff } from '../lib/diff.mjs';
+import { backupFile } from '../lib/backup.mjs';
+import readline from 'node:readline';
 
 const TYPES = ['ask', 'review', 'plan', 'analyze', 'research', 'transform'];
 
@@ -155,10 +158,27 @@ export async function runTasks() {
   }
 }
 
+function askYesNo(q) {
+  return new Promise((resolve) => {
+    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
+    rl.question(q, (a) => { rl.close(); resolve(/^y(es)?$/i.test(a.trim())); });
+  });
+}
+
+/** Trich danh sach file tu ket qua assign ({files: [{path|name, content}]}). */
+export function extractResultFiles(result) {
+  const arr = Array.isArray(result?.files) ? result.files : [];
+  return arr
+    .filter((f) => f && typeof f.content === 'string' && (f.path || f.name))
+    .map((f) => ({ path: String(f.path || f.name), content: f.content }));
+}
+
 export async function runResult(args = []) {
-  const id = args[0];
+  const apply = args.includes('--apply');
+  const yes = args.includes('--yes') || args.includes('-y');
+  const id = args.find((a) => !a.startsWith('-'));
   if (!id) {
-    console.error('Dung: pe result <task_id>');
+    console.error('Dung: pe result <task_id> [--apply] [--yes]');
     process.exitCode = 2;
     return;
   }
@@ -169,6 +189,36 @@ export async function runResult(args = []) {
     if (r.status === 'done') {
       console.log('\n--- Ket qua ---\n');
       console.log(resultText(r.result));
+      const files = extractResultFiles(r.result);
+      if (files.length && !apply) {
+        console.log(`\n(Ket qua co ${files.length} file — chay lai voi --apply de ghi vao project hien tai)`);
+      }
+      if (files.length && apply) {
+        console.log('\n--- Ap dung file vao project ---');
+        const base = process.cwd();
+        for (const f of files) {
+          const abs = path.resolve(base, f.path);
+          if (abs !== base && !abs.startsWith(base + path.sep)) {
+            console.log(`Bo qua ${f.path}: duong dan ra ngoai project.`);
+            continue;
+          }
+          let cur = '';
+          try { cur = await fs.readFile(abs, 'utf8'); } catch { /* file moi */ }
+          if (cur === f.content) { console.log(`${f.path}: noi dung da giong, bo qua.`); continue; }
+          console.log(`\n[${f.path}]`);
+          console.log(formatDiff(cur, f.content));
+          let ok = yes;
+          if (!ok) {
+            if (!process.stdin.isTTY) { console.log('Khong phai terminal — dung --yes de ghi.'); continue; }
+            ok = await askYesNo('Ghi file nay? (y/N) ');
+          }
+          if (!ok) { console.log('Bo qua.'); continue; }
+          await backupFile(abs);
+          await fs.mkdir(path.dirname(abs), { recursive: true });
+          await fs.writeFile(abs, f.content, 'utf8');
+          console.log(`Da ghi ${f.path} (co backup — pe undo khoi phuc duoc).`);
+        }
+      }
     } else if (r.status === 'failed') {
       console.log(`Loi: ${r.error || '(khong ro)'}`);
     } else {

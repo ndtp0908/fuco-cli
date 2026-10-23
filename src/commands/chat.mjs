@@ -9,7 +9,7 @@ import { collectAttachments, expandMentions, buildUserContent, describeAttachmen
 import { createToolRunner } from '../lib/tools.mjs';
 import { runAgent, AGENT_SYSTEM, extractJsonToolCall } from '../lib/agent.mjs';
 import { restoreLatest, latestBackup } from '../lib/backup.mjs';
-import { createSession, saveSession, loadSession, latestSession } from '../lib/session.mjs';
+import { createSession, saveSession, loadSession, latestSession, listSessions } from '../lib/session.mjs';
 import { maybeCompact, withSummary } from '../lib/compact.mjs';
 import path from 'node:path';
 
@@ -26,7 +26,8 @@ Lenh trong chat:
   /tools [on|off]  bat/tat che do agent (dung tools trong project)
   /approval [1|2|3]  muc duyet tool: 1 hoi tat ca, 2 vua (mac dinh), 3 tu do
   /undo [file]     khoi phuc file ve ban truoc khi pe sua
-  /session         xem phien chat hien tai (id, so tin)\n  /clear           xoa lich su doan nay + dinh kem dang cho
+  /session         xem phien chat hien tai (id, so tin)
+  /new             bat dau phien moi (phien cu van con trong ~/.pe/sessions)\n  /clear           xoa lich su doan nay + dinh kem dang cho
   /exit            thoat (hoac Ctrl+C)
 Trong cau co the go @duong-dan de dinh kem ngay file/anh do.
 `;
@@ -44,8 +45,10 @@ export async function runChat(args = [], input = process.stdin, output = process
   let currentModel = cfg.model;
   let approval = cfg.approval;
   let toolsOn = true;
-  // Phien chat: --resume [id] mo lai phien cu (mac dinh la phien gan nhat)
+  // Phien chat: --resume [id] mo lai phien cu; mac dinh tu noi phien cua
+  // chinh project nay (Goi C7); --new ep tao phien moi.
   let session = null;
+  let resumed = false;
   if (args[0] === '--resume') {
     session = args[1] ? await loadSession(args[1]) : await latestSession();
     if (!session) {
@@ -53,10 +56,16 @@ export async function runChat(args = [], input = process.stdin, output = process
       process.exitCode = 2;
       return;
     }
-    if (session.model) currentModel = session.model;
-  } else {
-    session = await createSession({ cwd: process.cwd(), model: currentModel });
+    resumed = true;
+  } else if (args[0] !== '--new') {
+    const mine = (await listSessions()).find((x) => x.cwd === process.cwd());
+    if (mine && mine.messages.length) {
+      session = mine;
+      resumed = true;
+    }
   }
+  if (!session) session = await createSession({ cwd: process.cwd(), model: currentModel });
+  if (resumed && session.model) currentModel = session.model;
   let history = session.messages; // user/assistant (khong chua system)
   let staged = { files: [], images: [] }; // dinh kem cho cho tin nhan tiep theo
 
@@ -79,11 +88,27 @@ export async function runChat(args = [], input = process.stdin, output = process
   });
 
   console.log(`pe chat — model: ${currentModel}${ctx ? `\nDa nap ngu canh project: ${ctx.path}` : ''}`);
-  console.log(args[0] === '--resume'
-    ? `Da mo lai phien ${session.id} (${history.length} tin${session.summary ? ' + ban tom tat' : ''}).`
+  console.log(resumed
+    ? `Da mo lai phien ${session.id} cua project nay (${history.length} tin${session.summary ? ' + ban tom tat' : ''}). Go /new neu muon phien moi.`
     : `Phien moi: ${session.id} (tu luu, mo lai bang: pe chat --resume)`);
   console.log('Go "/help" de xem lenh, "/exit" de thoat.\n');
   safePrompt();
+
+  // Ctrl+C: dang co luot chay thi ngat luot (giu chat), dang ranh thi thoat em.
+  let turnAbort = null;
+  let exiting = false;
+  const onSigint = async () => {
+    if (turnAbort) {
+      turnAbort.abort();
+      return;
+    }
+    if (exiting) return;
+    exiting = true;
+    try { await saveSession(session); } catch { /* bo qua */ }
+    console.log('\n(Da luu phien — tam biet!)');
+    process.exit(0);
+  };
+  process.on('SIGINT', onSigint);
 
   const buildSystem = () => {
     let s = withSummary(BASE_SYSTEM, session.summary);
@@ -98,13 +123,14 @@ export async function runChat(args = [], input = process.stdin, output = process
    *   thi chuyen sang vong lap agent; khong phai thi in truc tiep (streaming that).
    * - tat tools: stream truc tiep.
    */
-  async function replyTurn() {
+  async function replyTurn(signal) {
     const messages = [{ role: 'system', content: buildSystem() }, ...history];
     if (!toolsOn) {
       let buf = '';
       await chatCompletionStream(cfg, {
         model: currentModel,
         messages,
+        signal,
         onToken: (t) => { buf += t; output.write(t); },
       });
       output.write('\n');
@@ -116,6 +142,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       await chatCompletionStream(cfg, {
         model: currentModel,
         messages,
+        signal,
         onToken: (t) => {
           buf += t;
           if (!decided) {
@@ -137,7 +164,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       if (e instanceof PeError && (e.kind === 'auth' || e.kind === 'model')) throw e;
       // Stream gap giua chung -> chay agent khong stream
       const runner = createToolRunner({ root: process.cwd(), approval, confirm });
-      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent });
+      const { text } = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal });
       console.log(text);
       return text;
     }
@@ -159,6 +186,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       runner,
       onEvent: agentEvent,
       firstReply: { text: buf, toolCalls: [] },
+      signal,
     });
     console.log(text);
     return text;
@@ -176,6 +204,12 @@ export async function runChat(args = [], input = process.stdin, output = process
 
     if (line === '/exit' || line === '/quit') break;
     if (line === '/help') { console.log(HELP); safePrompt(); continue; }
+    if (line === '/new') {
+      session = await createSession({ cwd: process.cwd(), model: currentModel });
+      history = session.messages;
+      console.log(`Phien moi: ${session.id}`);
+      safePrompt(); continue;
+    }
     if (line === '/session') {
       console.log(`Phien ${session.id} — ${history.length} tin${session.summary ? `, da tom tat ${session.summary.count} tin cu` : ''}, luu tai ~/.pe/sessions/${session.id}.json`);
       safePrompt(); continue;
@@ -289,23 +323,31 @@ export async function runChat(args = [], input = process.stdin, output = process
     const shadow = line + (describeAttachments(att) ? `\n${describeAttachments(att)}` : '');
     history.push({ role: 'user', content });
     process.stdout.write('pe: ');
+    turnAbort = new AbortController();
     try {
-      const text = await replyTurn();
+      const text = await replyTurn(turnAbort.signal);
       history[history.length - 1] = { role: 'user', content: shadow };
       history.push({ role: 'assistant', content: text });
       staged = { files: [], images: [] };
     } catch (e) {
       process.stdout.write('\n');
       history[history.length - 1] = { role: 'user', content: shadow };
+      if (turnAbort?.signal.aborted || e?.name === 'AbortError') {
+        console.log('(da ngat luot nay — go tiep khi san sang)');
+      } else {
       console.log(`Loi: ${e.message}\n(cau hoi van giu trong lich su — go lai neu muon thu tiep)`);
       if (att.images.length && /support image input/i.test(e.message)) {
         console.log('Goi y: model dang dung khong nhan anh. Doi sang model vision :free, vi du: /model nvidia/nemotron-3.5-super-vl:free');
       }
+      }
     }
+    turnAbort = null;
+    turnAbort = null;
     session.model = currentModel;
     try { await saveSession(session); } catch { /* luu phien loi khong chan chat */ }
     safePrompt();
   }
+  process.removeListener('SIGINT', onSigint);
   rl.close();
   console.log('Tam biet!');
 }

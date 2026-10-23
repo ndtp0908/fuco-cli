@@ -1,7 +1,8 @@
 // `pe init` — wizard cau hinh lan dau: worker URL + proxy secret + model.
 // Ghi vao ~/.pe/config.json, chmod 600.
 import readline from 'node:readline';
-import { DEFAULT_MODEL, loadConfig, normalizeUrl, saveConfig } from '../lib/config.mjs';
+import { DEFAULT_MODEL, DEFAULT_PE_WORKER_URL, loadConfig, normalizeUrl, saveConfig } from '../lib/config.mjs';
+import { decodeConnectCode } from '../lib/connect.mjs';
 import { promises as fsp } from 'node:fs';
 import path from 'node:path';
 import { apiFetch } from '../lib/api.mjs';
@@ -12,7 +13,7 @@ function ask(rl, q, def) {
 }
 
 /** Nhap secret ma khong hien len man hinh. */
-function askHidden(q) {
+export function askHidden(q) {
   return new Promise((resolve) => {
     const stdin = process.stdin;
     const stdout = process.stdout;
@@ -40,6 +41,8 @@ function askHidden(q) {
 
 export async function runInit(args = []) {
   if (args.includes('--project')) return runProjectInit();
+  const codeIdx = args.indexOf('--code');
+  if (codeIdx >= 0) return runImportCode(args[codeIdx + 1]);
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
@@ -115,3 +118,37 @@ async function runProjectInit() {
   console.log('\nTu gio dung pe o thu muc nay (hoac thu muc con) se tu ap dung cau hinh + ngu canh tren.');
 }
 
+
+/** `pe init --code <PE1...>` — nhap cau hinh tu ma ket noi (Goi A1). */
+async function runImportCode(code) {
+  if (!code) {
+    console.error('Thieu ma ket noi. Dung: pe init --code <PE1...>');
+    process.exitCode = 2;
+    return;
+  }
+  const password = process.env.PE_CONNECT_PASSWORD || (await askHidden('Mat khau cua ma ket noi'));
+  let data;
+  try {
+    data = decodeConnectCode(code, password);
+  } catch (e) {
+    console.error(`Khong giai ma duoc: ${e.message}`);
+    process.exitCode = 1;
+    return;
+  }
+  const p = await saveConfig({
+    workerUrl: data.workerUrl || '',
+    peWorkerUrl: data.peWorkerUrl || DEFAULT_PE_WORKER_URL,
+    proxySecret: data.proxySecret || '',
+    model: data.model || DEFAULT_MODEL,
+    approval: [1, 2, 3].includes(Number(data.approval)) ? Number(data.approval) : 2,
+  });
+  console.log(`Da nhap cau hinh tu ma ket noi vao ${p} (worker: ${data.workerUrl}, model: ${data.model || DEFAULT_MODEL}).`);
+  process.stdout.write('Dang thu ket noi toi worker... ');
+  try {
+    const { apiFetch } = await import('../lib/api.mjs');
+    const d = await apiFetch({ workerUrl: data.workerUrl, proxySecret: data.proxySecret }, '/api/models', { timeoutMs: 20000 });
+    console.log(`OK — thay ${Array.isArray(d?.data) ? d.data.length : 0} model. Xong, dung ngay duoc!`);
+  } catch (e) {
+    console.log(`CHUA DUOC: ${e.message}`);
+  }
+}

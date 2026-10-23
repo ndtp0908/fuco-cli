@@ -116,12 +116,13 @@ export async function runAsk(args) {
   messages.push({ role: 'user', content: buildUserContent(prompt, att) });
 
   try {
-    await chatCompletionStream(cfg, {
+    const r = await chatCompletionStream(cfg, {
       model,
       messages,
       onToken: (t) => process.stdout.write(t),
     });
     process.stdout.write('\n');
+    if (r?.fellBack) console.error(`(Model chinh bi nghen — da chuyen sang model du phong: ${r.model})`);
   } catch (e) {
     console.error(`Loi: ${e.message}`);
     if (att.images.length && /support image input/i.test(e.message)) {

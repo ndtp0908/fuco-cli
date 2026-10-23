@@ -5,7 +5,8 @@ import path from 'node:path';
 
 export const DEFAULT_MODEL = 'nvidia/nemotron-3-ultra-550b-a55b:free'; // model free mac dinh, giong app
 export const DEFAULT_PE_WORKER_URL = 'https://fuco-pe-agent.ndtphuoc2003.workers.dev'; // hang doi KV cua pe (assign)
-export const DEFAULT_CONTEXT_LIMIT = 100000; // token uoc tinh cho auto-compact (model free pho bien 128k+)
+export const DEFAULT_CONTEXT_LIMIT = 100000;
+export const DEFAULT_FALLBACK_MODELS = ['google/gemma-4-31b-it:free', 'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free']; // model free du phong khi model chinh bi nghen (Goi B) // token uoc tinh cho auto-compact (model free pho bien 128k+)
 export const DEFAULT_APPROVAL = 2; // D3: tu sua file trong project, hoi khi chay shell nguy hiem
 
 export function configDir(home = process.env.PE_HOME || os.homedir()) {
@@ -45,11 +46,15 @@ export async function loadConfig(home) {
   const peWorkerUrl = normalizeUrl(cleanStr(env.PE_PE_WORKER_URL) || cleanStr(file.peWorkerUrl) || DEFAULT_PE_WORKER_URL);
   const proxySecret = cleanStr(env.PE_PROXY_SECRET) || cleanStr(file.proxySecret);
   const contextLimit = Number(env.PE_CONTEXT_LIMIT) > 0 ? Number(env.PE_CONTEXT_LIMIT) : DEFAULT_CONTEXT_LIMIT;
+  const fallbackModels = (cleanStr(env.PE_FALLBACK_MODELS)
+    ? cleanStr(env.PE_FALLBACK_MODELS).split(',').map((x) => x.trim()).filter(Boolean)
+    : (Array.isArray(file.fallbackModels) && file.fallbackModels.length ? file.fallbackModels : DEFAULT_FALLBACK_MODELS));
+  const updateUrl = cleanStr(file.updateUrl);
   const model = cleanStr(env.PE_MODEL) || proj.model || cleanStr(file.model) || DEFAULT_MODEL;
   const approvalRaw = cleanStr(env.PE_APPROVAL) ?? proj.approval ?? file.approval;
   const approval = [1, 2, 3].includes(Number(approvalRaw)) ? Number(approvalRaw) : DEFAULT_APPROVAL;
   return {
-    workerUrl, peWorkerUrl, proxySecret, model, approval, contextLimit,
+    workerUrl, peWorkerUrl, proxySecret, model, approval, contextLimit, fallbackModels, updateUrl,
     _meta: {
       path: p,
       fileExists: fileOk,
@@ -96,18 +101,47 @@ export async function loadProjectConfig(startDir = process.cwd()) {
   };
 }
 
-/** Bo nho project: noi dung .pe/context.md gan nhat (toi da 32 KB). */
-export async function loadProjectContext(startDir = process.cwd()) {
-  const dir = await findProjectDir(startDir);
-  if (!dir) return null;
-  const p = path.join(dir, '.pe', 'context.md');
-  try {
-    const raw = await fs.readFile(p, 'utf8');
-    const text = raw.slice(0, 32 * 1024).trim();
-    return text ? { path: p, text } : null;
-  } catch {
-    return null;
+/** Tim file .muserules gan nhat khi di len tu startDir. */
+export async function findClineRules(startDir = process.cwd()) {
+  let dir = path.resolve(startDir);
+  for (;;) {
+    const cand = path.join(dir, '.muserules');
+    try {
+      const st = await fs.stat(cand);
+      if (st.isFile()) return cand;
+    } catch { /* chua co */ }
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
   }
+}
+
+/**
+ * Bo nho project: .pe/context.md gan nhat + .muserules (neu co) — viet 1 cho,
+ * ca pe lan Cline deu doc (Goi C6). Moi nguon toi da 32 KB.
+ */
+export async function loadProjectContext(startDir = process.cwd()) {
+  const parts = [];
+  const paths = [];
+  const dir = await findProjectDir(startDir);
+  if (dir) {
+    const p = path.join(dir, '.pe', 'context.md');
+    try {
+      const raw = await fs.readFile(p, 'utf8');
+      const text = raw.slice(0, 32 * 1024).trim();
+      if (text) { parts.push(text); paths.push(p); }
+    } catch { /* chi co config.json */ }
+  }
+  const rulesPath = await findClineRules(startDir);
+  if (rulesPath) {
+    try {
+      const raw = await fs.readFile(rulesPath, 'utf8');
+      const text = raw.slice(0, 32 * 1024).trim();
+      if (text) { parts.push('Quy tac tu .muserules:\n' + text); paths.push(rulesPath); }
+    } catch { /* bo qua */ }
+  }
+  if (!parts.length) return null;
+  return { path: paths.join(' + '), text: parts.join('\n\n') };
 }
 
 /** Ghi config, chmod 600 vi chua secret. */

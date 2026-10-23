@@ -72,10 +72,25 @@ Trong chat còn có: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model
 
 `pe edit` là đường ngắn cho quy trình code công ty: pe đề xuất bản sửa → hiện **diff** → bạn duyệt → mới ghi (có backup). `--dry` chỉ xem diff, `--yes` ghi ngay không hỏi.
 
+## Mượt mà hơn (v0.4.0 — 3 gói cải tiến)
+
+**Máy công ty (gói A):**
+- `pe connect export` → sinh **mã kết nối** mã hoá bằng mật khẩu; sang máy mới chỉ cần `pe init --code <mã>` là xong cấu hình, khỏi gõ URL/secret dài.
+- `pe update [--check]` → tự kiểm tra bản mới qua manifest `release/pe-update.json`, tải về, **verify SHA256** rồi mới thay exe (bản cũ giữ thành `.old`).
+- `pe result <id> --apply` → kết quả assign có file thì xem diff và ghi thẳng vào project (có backup).
+
+**Model ổn định (gói B):**
+- **Model dự phòng tự động**: model chính bị nghẽn/hết lượt/chết tên (429/5xx/400 model) thì CLI tự chuyển model free dự phòng (đặt qua `fallbackModels` trong config hoặc `PE_FALLBACK_MODELS`), có báo rõ model nào đang phục vụ.
+- `pe model list --vision` lọc model có vision; chat bấm **Ctrl+C** là ngắt lượt đang chạy mà không văng khỏi phiên.
+
+**Hợp nhất Cline + pe (gói C):**
+- `pe rules [install|export|import]` — một bộ nhớ project cho cả hai: pe nạp cả `.pe/context.md` lẫn `.muserules`; `install` cài bộ quy tắc Cline chuẩn (đọc trước khi sửa, không lặp quá 2 lần, kiểm chứng trước khi báo xong...).
+- `pe chat` tự nối lại phiên của đúng project đang đứng (`/new` khi muốn phiên mới).
+
 ## Kiểm tra
 
 ```bash
-npm test   # 43 ca: config/env/project override, mock worker (sai secret, model non-free,
+npm test   # 54 ca: config/env/project override, mock worker (sai secret, model non-free,
            # mất mạng), streaming SSE, đính kèm file/ảnh/@mention/stdin, help chi tiết,
            # pe edit + undo, agent pe do (đọc→sửa file), glob list_files, chat đa-tool JSON
 ```

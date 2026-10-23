@@ -74,14 +74,14 @@ export function extractJsonToolCall(text) {
  * - firstReply: (tuy chon) ket qua chatCompletion da goi san cho buoc dau (chat streaming dung).
  * Tra ve { text, steps }.
  */
-export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps = 14, firstReply } = {}) {
+export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps = 14, firstReply, signal } = {}) {
   const note = (t) => { if (onEvent) onEvent('note', t); };
   let steps = 0;
   let reply = firstReply || null;
 
   for (;;) {
     if (!reply) {
-      reply = await chatCompletion(cfg, { model, messages, tools: TOOL_DEFS });
+      reply = await chatCompletion(cfg, { model, messages, tools: TOOL_DEFS, signal });
     }
     const calls = [];
     if (reply.toolCalls && reply.toolCalls.length) {
