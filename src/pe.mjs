@@ -122,7 +122,7 @@ bằng tools (read_file/write_file/edit_file/list_files/grep/run_bash).
 Mỗi lần ghi file đều backup trước — pe undo khôi phục được.
 
 Cú pháp:
-  pe do "<việc>" [--yolo] [--approval 1|2|3] [--web] [--verify "<lệnh>"]
+  pe do "<việc>" [--yolo] [--approval 1|2|3] [--web] [--json] [--verify "<lệnh>"]
   (--web: worker tìm web + chèn nguồn cho câu hỏi gốc trước khi agent chạy)
   (--verify: làm xong tự chạy lệnh kiểm chứng, vd "npm run build" hay
    "npm test"; FAIL thì đưa lỗi về cho agent sửa tiếp, tối đa 2 vòng)

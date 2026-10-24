@@ -122,6 +122,9 @@ function startMock() {
             reply = 'LIST-DONE';
           } else if (typeof lastContent === 'string' && lastContent.includes('LIST-TASK')) {
             reply = '```json\n{"tool": "list_files", "args": {"pattern": "**/*.txt"}}\n```';
+          } else if (allText.includes('JSONDO-TASK')) {
+            if (allText.includes('Ket qua tool')) reply = 'JSON-DONE';
+            else reply = '```json\n{"tool": "run_bash", "args": {"command": "mkdir json_out"}}\n```';
           } else if (typeof lastContent === 'string' && lastContent.includes('AGENT-TASK')) {
             reply = '```json\n{"tool": "read_file", "args": {"path": "a.txt"}}\n```';
           } else if (sysText.includes('CTX-MARKER-123')) {
@@ -654,6 +657,29 @@ async function main() {
   ok('model <id> doi + luu', r.code === 0 && r.out.includes('new-model:free'), r.out.trim());
   const cfg3 = await loadConfig(tmpHome);
   ok('model moi da luu vao config', cfg3.model === 'new-model:free', cfg3.model);
+
+  // 29) pe do --json (dot25): stdout chi co JSONL; duyet lenh qua stdin.
+  {
+    const projJson = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-json-'));
+    const parseLines = (out) => out.split('\n').filter((l) => l.trim()).map((l) => { try { return JSON.parse(l); } catch { return null; } });
+    // 29a: duyet "yes" -> lenh chay that, du day du su kien.
+    let r = await runCli(['do', 'JSONDO-TASK lam thu muc', '--json', '--approval', '2'], menv,
+      '{"type":"approval-answer","id":"a1","decision":"yes"}\n', { cwd: projJson });
+    let evs = parseLines(r.out);
+    ok('json: moi dong stdout deu la JSON hop le', evs.length > 0 && evs.every((e) => e !== null), r.out.slice(0, 200));
+    ok('json: co start/tool/approval/result/text/done', ['start', 'tool', 'approval', 'result', 'text', 'done'].every((t) => evs.some((e) => e && e.type === t)), JSON.stringify(evs.map((e) => e && e.type)) + ' err=' + (evs.find((e) => e && e.type === 'error')?.message || ''));
+    const dirYes = await fs.stat(path.join(projJson, 'json_out')).then(() => true).catch(() => false);
+    ok('json: done ok + lenh chay that (tao duoc thu muc)', evs.at(-1)?.type === 'done' && evs.at(-1)?.ok === true && dirYes, `code=${r.code}`);
+    // 29b: duyet "no" -> lenh khong chay, agent van ket thuc gon.
+    const projJson2 = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-json2-'));
+    r = await runCli(['do', 'JSONDO-TASK lam thu muc', '--json', '--approval', '2'], menv,
+      '{"type":"approval-answer","id":"a1","decision":"no"}\n', { cwd: projJson2 });
+    evs = parseLines(r.out);
+    const dirNo = await fs.stat(path.join(projJson2, 'json_out')).then(() => true).catch(() => false);
+    ok('json: tu choi -> khong tao thu muc, done ok', !dirNo && evs.at(-1)?.type === 'done' && evs.at(-1)?.ok === true, `code=${r.code} out=${r.out.slice(0, 150)}`);
+    await fs.rm(projJson, { recursive: true, force: true });
+    await fs.rm(projJson2, { recursive: true, force: true });
+  }
 
   srv.close();
   await fs.rm(tmpHome, { recursive: true, force: true });
