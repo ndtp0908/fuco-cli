@@ -7,7 +7,7 @@
 import { loadConfig, missingFields } from '../lib/config.mjs';
 import { loadContextWithLessons } from '../lib/lessons.mjs';
 import { chatCompletionStream, PeError } from '../lib/api.mjs';
-import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
+import { collectAttachments, expandMentions, buildUserContent, describeAttachments, extractFirstUrl } from '../lib/attach.mjs';
 import { currentTimeLine } from '../lib/now.mjs';
 
 /**
@@ -124,6 +124,7 @@ export async function runAsk(args) {
       model,
       messages,
       web,
+      readUrl: extractFirstUrl(prompt) || undefined,
       onToken: (t) => process.stdout.write(t),
     });
     process.stdout.write('\n');

@@ -5,6 +5,7 @@
 import { createHash } from 'node:crypto';
 import { chatCompletion } from './api.mjs';
 import { TOOL_DEFS, describeToolCall } from './tools.mjs';
+import { extractFirstUrl } from './attach.mjs';
 
 export const AGENT_SYSTEM = `Bạn là pé, trợ lý coding chạy trong terminal của người dùng, thao tác trực tiếp trên project hiện tại bằng tools.
 
@@ -112,6 +113,18 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
   // dung); cac buoc agent sau do tin nhan cuoi la ket qua tool — tim web
   // theo do chi ton cong va nhieu ngu canh.
   let webPending = !!web && !firstReply;
+  // URL1: link dan trong cau hoi goc -> worker tai trang, cung chi ap
+  // cho lan goi model DAU cua luot (nhu web).
+  let readUrlPending = null;
+  if (!firstReply) {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const c = messages[i];
+      if (c && c.role === 'user' && typeof c.content === 'string') {
+        readUrlPending = extractFirstUrl(c.content);
+        break;
+      }
+    }
+  }
 
   // Su co phuc vu rut bai hoc (v0.8): ghi lai cac loi tool THAT SU
   // (prefix LOI: hoac run_bash exit != 0), toi da 8, khong trung. Luot
@@ -137,8 +150,9 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
 
   for (;;) {
     if (!reply) {
-      reply = await chatCompletion(cfg, { model, messages, tools: TOOL_DEFS, signal, web: webPending });
+      reply = await chatCompletion(cfg, { model, messages, tools: TOOL_DEFS, signal, web: webPending, readUrl: readUrlPending || undefined });
       webPending = false;
+      readUrlPending = null;
     }
     const calls = [];
     if (reply.toolCalls && reply.toolCalls.length) {

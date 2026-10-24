@@ -148,6 +148,17 @@ export function buildUserContent(prompt, att) {
 }
 
 /** Dong mo ta dinh kem ngan gon (hien cho user + luu vao lich su chat thay cho base64). */
+/**
+ * URL http(s) dau tien trong cau, neu co (URL1): khi nguoi dung dan link,
+ * CLI gui kem readUrl de worker tai trang va tra loi theo noi dung that.
+ * Cat dau cau thua o cuoi ("... xem https://a.b/c." -> "https://a.b/c").
+ */
+export function extractFirstUrl(text) {
+  const m = String(text || '').match(/https?:\/\/[^\s<>"'`)\]]+/);
+  if (!m) return null;
+  return m[0].replace(/[.,;:!?]+$/, '');
+}
+
 export function describeAttachments(att) {
   const parts = [];
   for (const b of att.textBlocks) parts.push(`file ${b.label} (${fmtBytes(b.bytes)})`);

@@ -178,6 +178,7 @@ function startMock() {
             }
           }
           if (parsed?.web === true) reply = 'WEB-FLAG-OK';
+          if (parsed?.readUrl === 'https://example.com/bai-viet') reply = 'URL-FLAG-OK';
           if (parsed?.stream) {
             res.writeHead(200, { 'Content-Type': 'text/event-stream' });
             const third = Math.max(1, Math.ceil(reply.length / 3));
@@ -573,6 +574,18 @@ async function main() {
   ok('chat /web on -> luot hoi co web:true', r.code === 0 && r.out.includes('Tìm kiếm web: BẬT') && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 160)}`);
   r = await runCli(['do', 'WEBDO viec can web', '--web'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projLoop });
   ok('do --web gui web:true o lan goi dau', r.code === 0 && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 120)}`);
+
+  // 27b. Doc link (v0.11, URL1): dan link trong cau -> tu gui readUrl
+  {
+    const { extractFirstUrl } = await import('../src/lib/attach.mjs');
+    ok('extractFirstUrl lay link giua cau', extractFirstUrl('doc trang https://example.com/bai-viet giup toi') === 'https://example.com/bai-viet', extractFirstUrl('doc trang https://example.com/bai-viet giup toi'));
+    ok('extractFirstUrl cat dau cham cuoi cau', extractFirstUrl('xem https://a.b/c.') === 'https://a.b/c', extractFirstUrl('xem https://a.b/c.'));
+    ok('extractFirstUrl khong link -> null', extractFirstUrl('khong co link nao') === null, 'phai null');
+  }
+  r = await runCli(['ask', 'doc trang https://example.com/bai-viet tom tat giup'], menv);
+  ok('ask dan link -> gui readUrl len worker', r.code === 0 && r.out.includes('URL-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 80)}`);
+  r = await runCli(['ask', 'cau hoi khong co link'], menv);
+  ok('ask khong link -> khong co readUrl', r.code === 0 && r.out.includes('MOCK-REPLY-OK') && !r.out.includes('URL-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 80)}`);
 
   // 28. Lessons (v0.8): agent loi->sua->xong, distill, duyet y moi luu,
   // phien sau tu nap lai; dedup tang x2; pe lessons list/rm; /lesson.
