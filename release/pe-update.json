@@ -1,6 +1,6 @@
 {
  "version": "0.10.0",
- "exeUrl": "https://drive.google.com/uc?export=download&id=1xDEMGoCb6jHSUmfQW8PAwUMFPfaLwe4N",
+ "exeUrl": "https://drive.usercontent.google.com/download?id=1xDEMGoCb6jHSUmfQW8PAwUMFPfaLwe4N&export=download&confirm=t",
  "sha256": "1e3198cea7f330f65375a073ff5508fe91bbce3563f86a1438af75c1136fda41",
  "size": 94218752,
  "notes": "v0.10.0: (1) pe config — quản lý toàn bộ cấu hình ngay trong CLI (xem tổng quan + nguồn từng khoá, get/set kể cả theo project, edit mở đúng file config/context/lessons/rules, path); (2) pe sessions rm <id> — xoá phiên chat theo id; (3) toàn bộ text hiển thị chuyển sang tiếng Việt có dấu (giữ nguyên các token giao thức nội bộ); (4) README tiếng Anh. Repo fuco-cli đã public nên từ bản này pe update tải manifest thật được."
