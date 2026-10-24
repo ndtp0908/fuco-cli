@@ -3,7 +3,7 @@
 import readline from 'node:readline';
 import { loadConfig, missingFields } from '../lib/config.mjs';
 import { createToolRunner } from '../lib/tools.mjs';
-import { runAgent, AGENT_SYSTEM } from '../lib/agent.mjs';
+import { runAgent, AGENT_SYSTEM, shellNote } from '../lib/agent.mjs';
 import { currentTimeLine } from '../lib/now.mjs';
 import { loadContextWithLessons, distillLessons, reviewAndSaveLessons } from '../lib/lessons.mjs';
 import { VERSION } from '../lib/version.mjs';
@@ -142,7 +142,7 @@ export async function runDo(args = []) {
   const ctx = await loadContextWithLessons();
   const runner = createToolRunner({ root: process.cwd(), approval: level, confirm: json ? jsonConfirm : makeConfirm() });
   const messages = [
-    { role: 'system', content: AGENT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgữ cảnh project:\n${ctx.text}` : '') },
+    { role: 'system', content: AGENT_SYSTEM + `\n\n${shellNote()}` + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgữ cảnh project:\n${ctx.text}` : '') },
     { role: 'user', content: task },
   ];
   log(`pe do (mức duyệt ${level}${level === 3 ? ' — yolo' : ''}${web ? ', web: bật' : ''}${verifyCmd ? `, verify: ${verifyCmd}` : ''}): ${task}\n`);

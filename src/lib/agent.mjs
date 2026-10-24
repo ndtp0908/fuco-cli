@@ -22,6 +22,17 @@ Quy tắc:
 - Không tự ý chạy lệnh nguy hiểm. Nếu tool báo LOI thì đọc kỹ lý do rồi mới thử lại.
 - Đường dẫn file luôn tương đối so với gốc project.`;
 
+/**
+ * Ghi chú shell cho agent (dot25b): mỗi lệnh run_bash chạy trong một
+ * shell MỚI tại thư mục project nên cd không có tác dụng bền, và
+ * lệnh phải đúng hệ điều hành — model hay phí lượt vào pwd/cd/ls
+ * trên Windows vì không biết điều này.
+ */
+export function shellNote() {
+  const win = process.platform === 'win32';
+  return `Môi trường shell: ${win ? 'Windows cmd.exe — dùng dir, type, mkdir, echo, findstr; KHÔNG dùng lệnh Unix (ls, cat, grep, sed, rm)' : 'shell Unix — dùng ls, cat, grep, sed'}.\nMỗi lệnh run_bash chạy trong một shell MỚI tại thư mục project: lệnh cd không có tác dụng sang lệnh sau — luôn dùng đường dẫn tuyệt đối hoặc tương đối từ gốc project, đừng cd rồi mới làm việc.`;
+}
+
 const TOOL_JSON_RE = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
 
 /** Trich xuat loi goi tool dang JSON-text tu cau tra loi (fallback). */

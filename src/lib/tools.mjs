@@ -151,7 +151,11 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
   function resolveInside(p) {
     if (!p || typeof p !== 'string') throw new Error('Thieu duong dan.');
     const abs = path.resolve(base, p);
-    if (abs !== base && !abs.startsWith(base + path.sep)) {
+    // base co the la GOC O DIA (E:\, /): luc do base da ket thuc bang
+    // sep, cong them sep nua (E:\\) lam moi duong dan trong o dia deu
+    // bi chan sai — dung la loi anh gap khi workdir la E:\.
+    const prefix = base.endsWith(path.sep) ? base : base + path.sep;
+    if (abs !== base && !abs.startsWith(prefix)) {
       throw new Error(`Duong dan ra ngoai project bi chan: ${p}`);
     }
     return abs;

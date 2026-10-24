@@ -8,7 +8,7 @@ import { loadContextWithLessons, distillLessons, saveLesson, formatLessonForRevi
 import { chatCompletionStream, listModels, freeOnly, PeError } from '../lib/api.mjs';
 import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
 import { createToolRunner } from '../lib/tools.mjs';
-import { runAgent, AGENT_SYSTEM, extractJsonToolCall } from '../lib/agent.mjs';
+import { runAgent, AGENT_SYSTEM, shellNote, extractJsonToolCall } from '../lib/agent.mjs';
 import { restoreLatest, latestBackup } from '../lib/backup.mjs';
 import { createSession, saveSession, loadSession, latestSession, listSessions } from '../lib/session.mjs';
 import { maybeCompact, withSummary } from '../lib/compact.mjs';
@@ -128,7 +128,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     let s = withSummary(BASE_SYSTEM, session.summary);
     s += `\n\n${currentTimeLine()}`;
     if (ctx) s += `\n\nNgữ cảnh project:\n${ctx.text}`;
-    if (toolsOn) s += `\n\n${AGENT_SYSTEM}`;
+    if (toolsOn) s += `\n\n${AGENT_SYSTEM}\n\n${shellNote()}`;
     return s;
   };
 

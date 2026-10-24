@@ -681,6 +681,25 @@ async function main() {
     await fs.rm(projJson2, { recursive: true, force: true });
   }
 
+  // 30) dot25b: chan duong dan o goc o dia + ghi chu shell.
+  {
+    const { createToolRunner } = await import('../src/lib/tools.mjs');
+    const { shellNote } = await import('../src/lib/agent.mjs');
+    // Goc filesystem '/' cung ket thuc bang sep nhu E:\ — truoc day
+    // moi file trong no deu bi chan sai.
+    const rootRunner = createToolRunner({ root: '/', approval: 3 });
+    const probe = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-rootprobe-'));
+    const probeFile = path.join(probe, 'x.txt');
+    await fs.writeFile(probeFile, 'ROOT-OK');
+    const got = await rootRunner.run('read_file', { path: probeFile });
+    ok('chan duong dan: goc / doc duoc file trong no', String(got).includes('ROOT-OK'), String(got).slice(0, 80));
+    const projRunner = createToolRunner({ root: probe, approval: 3 });
+    const outside = await projRunner.run('read_file', { path: '/etc/hostname' });
+    ok('chan duong dan: ngoai project van bi chan', String(outside).startsWith('LOI:'), String(outside).slice(0, 80));
+    await fs.rm(probe, { recursive: true, force: true });
+    ok('shellNote: noi ro shell moi + cd khong ben', shellNote().includes('shell MỚI') && shellNote().includes('cd không có tác dụng'), shellNote().slice(0, 60));
+  }
+
   srv.close();
   await fs.rm(tmpHome, { recursive: true, force: true });
   await fs.rm(emptyHome, { recursive: true, force: true });
