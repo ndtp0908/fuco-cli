@@ -22,7 +22,7 @@ export async function runBackup(args = []) {
   const dir = configDir(home);
   const cfg = await readJsonSafe(configPath(home));
   if (!cfg) {
-    console.error('Chua co cau hinh de backup — chay `pe init` truoc.');
+    console.error('Chưa có cấu hình để backup — chạy `pe init` trước.');
     process.exitCode = 2;
     return;
   }
@@ -45,7 +45,7 @@ export async function runBackup(args = []) {
     sessions,
     assigned: assigned || [],
   };
-  const password = backupPassword() || (await askHidden('Dat mat khau cho file backup (it nhat 4 ky tu)'));
+  const password = backupPassword() || (await askHidden('Đặt mật khẩu cho file backup (ít nhất 4 ký tự)'));
   let code;
   try {
     code = encodeConnectCode(bundle, password);
@@ -59,14 +59,14 @@ export async function runBackup(args = []) {
   const outPath = path.resolve(outIdx >= 0 ? args[outIdx + 1] : `pe-backup-${stamp}.pebak`);
   await fs.writeFile(outPath, code + '\n', 'utf8');
   const kb = Math.round(Buffer.byteLength(code) / 1024);
-  console.log(`Da backup vao ${outPath} (${kb} KB): cau hinh + ${Object.keys(sessions).length} phien chat + ${bundle.assigned.length} viec da giao.`);
-  console.log('De file nay len Drive/thu muc an toan — sang may moi chay: pe restore <file>');
+  console.log(`Đã backup vào ${outPath} (${kb} KB): cấu hình + ${Object.keys(sessions).length} phiên chat + ${bundle.assigned.length} việc đã giao.`);
+  console.log('Để file này lên Drive/thư mục an toàn — sang máy mới chạy: pe restore <file>');
 }
 
 export async function runRestore(args = []) {
   const file = args.find((a) => !a.startsWith('-'));
   if (!file) {
-    console.error('Dung: pe restore <file.pebak> [--force]');
+    console.error('Dùng: pe restore <file.pebak> [--force]');
     process.exitCode = 2;
     return;
   }
@@ -74,21 +74,21 @@ export async function runRestore(args = []) {
   try {
     code = (await fs.readFile(path.resolve(file), 'utf8')).trim();
   } catch {
-    console.error(`Khong doc duoc file ${file}.`);
+    console.error(`Không đọc được file ${file}.`);
     process.exitCode = 2;
     return;
   }
-  const password = backupPassword() || (await askHidden('Mat khau cua file backup'));
+  const password = backupPassword() || (await askHidden('Mật khẩu của file backup'));
   let bundle;
   try {
     bundle = decodeConnectCode(code, password);
   } catch (e) {
-    console.error(`Khong giai ma duoc: ${e.message}`);
+    console.error(`Không giải mã được: ${e.message}`);
     process.exitCode = 1;
     return;
   }
   if (bundle?.kind !== 'pe-backup' || !bundle.config) {
-    console.error('File nay khong phai backup cua pe (thieu config).');
+    console.error('File này không phải backup của pé (thiếu config).');
     process.exitCode = 1;
     return;
   }
@@ -97,7 +97,7 @@ export async function runRestore(args = []) {
   const force = args.includes('--force');
   const existing = await readJsonSafe(configPath(home));
   if (existing && !force) {
-    console.error('May nay DA co cau hinh pe — restore se ghi de. Them --force neu chac chan.');
+    console.error('Máy này ĐÃ có cấu hình pé — restore sẽ ghi đè. Thêm --force nếu chắc chắn.');
     process.exitCode = 2;
     return;
   }
@@ -113,6 +113,6 @@ export async function runRestore(args = []) {
   if (Array.isArray(bundle.assigned)) {
     await fs.writeFile(path.join(dir, 'assigned.json'), JSON.stringify(bundle.assigned, null, 2) + '\n', 'utf8');
   }
-  console.log(`Da khoi phuc: cau hinh (worker ${bundle.config.workerUrl || '?'}, model ${bundle.config.model || '?'}) + ${n} phien chat. Backup tao luc ${bundle.createdAt}.`);
-  console.log('Kiem tra lai bang: pe doctor');
+  console.log(`Đã khôi phục: cấu hình (worker ${bundle.config.workerUrl || '?'}, model ${bundle.config.model || '?'}) + ${n} phiên chat. Backup tạo lúc ${bundle.createdAt}.`);
+  console.log('Kiểm tra lại bằng: pe doctor');
 }

@@ -48,19 +48,19 @@ export async function runAssign(args = []) {
   }
   const text = parts.join(' ').trim();
   if (!text) {
-    console.error('Dung: pe assign "<viec>" [--type ask|review|plan|analyze|research|transform] [--file <path>]... [--wait]');
+    console.error('Dùng: pe assign "<việc>" [--type ask|review|plan|analyze|research|transform] [--file <path>]... [--wait]');
     process.exitCode = 2;
     return;
   }
   if (!TYPES.includes(type)) {
-    console.error(`Type khong hop le: ${type}. Chon 1 trong: ${TYPES.join(', ')}`);
+    console.error(`Type không hợp lệ: ${type}. Chọn 1 trong: ${TYPES.join(', ')}`);
     process.exitCode = 2;
     return;
   }
   const cfg = await loadConfig();
   const miss = missingFields(cfg);
   if (miss.length) {
-    console.error(`Chua cau hinh du: thieu ${miss.join(', ')}. Chay \`pe init\` truoc.`);
+    console.error(`Chưa cấu hình đủ: thiếu ${miss.join(', ')}. Chạy \`pe init\` trước.`);
     process.exitCode = 2;
     return;
   }
@@ -70,7 +70,7 @@ export async function runAssign(args = []) {
       const att = await collectAttachments({ files });
       filePayload = att.textBlocks.map((b) => ({ name: b.label, content: b.text }));
     } catch (e) {
-      console.error(`Loi dinh kem: ${e.message}`);
+      console.error(`Lỗi đính kèm: ${e.message}`);
       process.exitCode = 2;
       return;
     }
@@ -85,16 +85,16 @@ export async function runAssign(args = []) {
     const r = await submitTask(cfg, { type, title: text.slice(0, 80), input });
     taskId = r.task_id;
   } catch (e) {
-    console.error(`Loi: ${e.message}`);
+    console.error(`Lỗi: ${e.message}`);
     process.exitCode = 1;
     return;
   }
   await rememberAssigned({ id: taskId, title: text.slice(0, 80), type, at: new Date().toISOString() });
-  console.log(`Da giao viec: ${taskId} (${type})`);
-  console.log('Pe xu ly theo chu ky kiem tra hang doi (08:00–16:30, T2–T7).');
-  console.log(`Xem ket qua: pe result ${taskId}`);
+  console.log(`Đã giao việc: ${taskId} (${type})`);
+  console.log('Pé xử lý theo chu kỳ kiểm tra hàng đợi (08:00–21:30, T2–T7).');
+  console.log(`Xem kết quả: pe result ${taskId}`);
   if (!wait) return;
-  console.log(`Dang cho ket qua (toi da ${timeoutMin} phut, Ctrl+C de dung cho — viec van chay)...`);
+  console.log(`Đang chờ kết quả (tối đa ${timeoutMin} phút, Ctrl+C để dừng chờ — việc vẫn chạy)...`);
   const deadline = Date.now() + timeoutMin * 60000;
   let lastStatus = '';
   for (;;) {
@@ -107,20 +107,20 @@ export async function runAssign(args = []) {
     }
     if (r.status !== lastStatus) {
       lastStatus = r.status;
-      console.log(`  [${new Date().toLocaleTimeString('vi-VN')}] trang thai: ${r.status}`);
+      console.log(`  [${new Date().toLocaleTimeString('vi-VN')}] trạng thái: ${r.status}`);
     }
     if (r.status === 'done') {
-      console.log('\n--- Ket qua tu pe ---\n');
+      console.log('\n--- Kết quả từ pé ---\n');
       console.log(resultText(r.result));
       return;
     }
     if (r.status === 'failed') {
-      console.error(`\nViec that bai: ${r.error || '(khong ro ly do)'}`);
+      console.error(`\nViệc thất bại: ${r.error || '(không rõ lý do)'}`);
       process.exitCode = 1;
       return;
     }
     if (Date.now() > deadline) {
-      console.log(`\nHet ${timeoutMin} phut ma viec chua xong. Xem lai sau: pe result ${taskId}`);
+      console.log(`\nHết ${timeoutMin} phút mà việc chưa xong. Xem lại sau: pe result ${taskId}`);
       return;
     }
   }
@@ -130,17 +130,17 @@ export async function runTasks() {
   const cfg = await loadConfig();
   const miss = missingFields(cfg);
   if (miss.length) {
-    console.error(`Chua cau hinh du: thieu ${miss.join(', ')}.`);
+    console.error(`Chưa cấu hình đủ: thiếu ${miss.join(', ')}.`);
     process.exitCode = 2;
     return;
   }
   try {
     const [pending, processing] = await Promise.all([listPending(cfg), listProcessing(cfg)]);
-    console.log(`Hang doi hien tai: ${pending.length} cho, ${processing.length} dang xu ly`);
-    for (const t of processing) console.log(`  [dang lam] ${t.id || t} — ${t.title || ''}`);
-    for (const id of pending) console.log(`  [cho]      ${id}`);
+    console.log(`Hàng đợi hiện tại: ${pending.length} chờ, ${processing.length} đang xử lý`);
+    for (const t of processing) console.log(`  [đang làm] ${t.id || t} — ${t.title || ''}`);
+    for (const id of pending) console.log(`  [chờ]      ${id}`);
   } catch (e) {
-    console.error(`Loi: ${e.message}`);
+    console.error(`Lỗi: ${e.message}`);
     process.exitCode = 1;
     return;
   }
@@ -178,54 +178,54 @@ export async function runResult(args = []) {
   const yes = args.includes('--yes') || args.includes('-y');
   const id = args.find((a) => !a.startsWith('-'));
   if (!id) {
-    console.error('Dung: pe result <task_id> [--apply] [--yes]');
+    console.error('Dùng: pe result <task_id> [--apply] [--yes]');
     process.exitCode = 2;
     return;
   }
   const cfg = await loadConfig();
   try {
     const r = await getResult(cfg, id);
-    console.log(`Trang thai: ${r.status}`);
+    console.log(`Trạng thái: ${r.status}`);
     if (r.status === 'done') {
-      console.log('\n--- Ket qua ---\n');
+      console.log('\n--- Kết quả ---\n');
       console.log(resultText(r.result));
       const files = extractResultFiles(r.result);
       if (files.length && !apply) {
-        console.log(`\n(Ket qua co ${files.length} file — chay lai voi --apply de ghi vao project hien tai)`);
+        console.log(`\n(Kết quả có ${files.length} file — chạy lại với --apply để ghi vào project hiện tại)`);
       }
       if (files.length && apply) {
-        console.log('\n--- Ap dung file vao project ---');
+        console.log('\n--- Áp dụng file vào project ---');
         const base = process.cwd();
         for (const f of files) {
           const abs = path.resolve(base, f.path);
           if (abs !== base && !abs.startsWith(base + path.sep)) {
-            console.log(`Bo qua ${f.path}: duong dan ra ngoai project.`);
+            console.log(`Bỏ qua ${f.path}: đường dẫn ra ngoài project.`);
             continue;
           }
           let cur = '';
           try { cur = await fs.readFile(abs, 'utf8'); } catch { /* file moi */ }
-          if (cur === f.content) { console.log(`${f.path}: noi dung da giong, bo qua.`); continue; }
+          if (cur === f.content) { console.log(`${f.path}: nội dung đã giống, bỏ qua.`); continue; }
           console.log(`\n[${f.path}]`);
           console.log(formatDiff(cur, f.content));
           let ok = yes;
           if (!ok) {
-            if (!process.stdin.isTTY) { console.log('Khong phai terminal — dung --yes de ghi.'); continue; }
-            ok = await askYesNo('Ghi file nay? (y/N) ');
+            if (!process.stdin.isTTY) { console.log('Không phải terminal — dùng --yes để ghi.'); continue; }
+            ok = await askYesNo('Ghi file này? (y/N) ');
           }
-          if (!ok) { console.log('Bo qua.'); continue; }
+          if (!ok) { console.log('Bỏ qua.'); continue; }
           await backupFile(abs);
           await fs.mkdir(path.dirname(abs), { recursive: true });
           await fs.writeFile(abs, f.content, 'utf8');
-          console.log(`Da ghi ${f.path} (co backup — pe undo khoi phuc duoc).`);
+          console.log(`Đã ghi ${f.path} (có backup — pe undo khôi phục được).`);
         }
       }
     } else if (r.status === 'failed') {
-      console.log(`Loi: ${r.error || '(khong ro)'}`);
+      console.log(`Lỗi: ${r.error || '(không rõ)'}`);
     } else {
-      console.log('Viec chua xong — thu lai sau it phut.');
+      console.log('Việc chưa xong — thử lại sau ít phút.');
     }
   } catch (e) {
-    console.error(`Loi: ${e.message}`);
+    console.error(`Lỗi: ${e.message}`);
     process.exitCode = 1;
   }
 }

@@ -11,5 +11,5 @@ export function currentTimeLine(now = new Date()) {
     minute: '2-digit',
     hour12: false,
   });
-  return `Thoi gian hien tai (may nguoi dung): ${s}. Khi nguoi dung noi "hom nay", "bay gio", "tuan nay" thi tinh theo thoi gian nay — dung tu bia ngay/gio khac.`;
+  return `Thời gian hiện tại (máy người dùng): ${s}. Khi người dùng nói "hôm nay", "bây giờ", "tuần này" thì tính theo thời gian này — đừng tự bịa ngày/giờ khác.`;
 }

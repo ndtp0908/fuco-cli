@@ -11,7 +11,7 @@ import { formatDiff } from '../lib/diff.mjs';
 import { backupFile, restoreLatest, latestBackup } from '../lib/backup.mjs';
 import { currentTimeLine } from '../lib/now.mjs';
 
-const EDIT_SYSTEM = 'Ban la cong cu sua file. Nguoi dung dua yeu cau va toan bo noi dung file hien tai. Hay tra ve DUY NHAT 1 khoi ma chua TOAN BO noi dung file sau khi sua (giai thich). Giu nguyen phan khong lien quan.';
+const EDIT_SYSTEM = 'Bạn là công cụ sửa file. Người dùng đưa yêu cầu và toàn bộ nội dung file hiện tại. Hãy trả về DUY NHẤT 1 khối mã chứa TOÀN BỘ nội dung file sau khi sửa (không giải thích). Giữ nguyên phần không liên quan.';
 
 function extractEdited(reply) {
   const m = reply.match(/```[^\n]*\n([\s\S]*?)```/);
@@ -44,14 +44,14 @@ export async function runEdit(args = []) {
   const file = pos[0];
   const instruction = pos.slice(1).join(' ').trim();
   if (!file || !instruction) {
-    console.error('Dung: pe edit <file> "<yeu cau sua>" [--yes] [--dry] [--model <id>]');
+    console.error('Dùng: pe edit <file> "<yêu cầu sửa>" [--yes] [--dry] [--model <id>]');
     process.exitCode = 2;
     return;
   }
   const cfg = await loadConfig();
   const miss = missingFields(cfg);
   if (miss.length) {
-    console.error(`Chua cau hinh du: thieu ${miss.join(', ')}. Chay \`pe init\` truoc.`);
+    console.error(`Chưa cấu hình đủ: thiếu ${miss.join(', ')}. Chạy \`pe init\` trước.`);
     process.exitCode = 2;
     return;
   }
@@ -59,23 +59,23 @@ export async function runEdit(args = []) {
   let original;
   try {
     const st = await fs.stat(abs);
-    if (st.size > 512 * 1024) throw new Error('file qua lon (>512 KB)');
+    if (st.size > 512 * 1024) throw new Error('file quá lớn (>512 KB)');
     original = await fs.readFile(abs, 'utf8');
-    if (original.includes('\0')) throw new Error('file nhi phan');
+    if (original.includes('\0')) throw new Error('file nhị phân');
   } catch (e) {
-    console.error(`Khong doc duoc file: ${e.message}`);
+    console.error(`Không đọc được file: ${e.message}`);
     process.exitCode = 2;
     return;
   }
   const ctx = await loadContextWithLessons();
   const messages = [
-    { role: 'system', content: EDIT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
-    { role: 'user', content: `Yeu cau: ${instruction}\n\nFile ${path.basename(abs)} hien tai:\n\`\`\`\n${original}\n\`\`\`` },
+    { role: 'system', content: EDIT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgữ cảnh project:\n${ctx.text}` : '') },
+    { role: 'user', content: `Yêu cầu: ${instruction}\n\nFile ${path.basename(abs)} hiện tại:\n\`\`\`\n${original}\n\`\`\`` },
   ];
   // THU LAI 1 LAN (v0.9 tu chua): cau tra loi khong co khoi ```, noi
   // dung giong het file goc (model chua sua), hoac loi goi model tam
   // thoi -> mom lai van de cho model va xin tra loi lai dung dinh dang.
-  process.stdout.write('Dang nghi cach sua... ');
+  process.stdout.write('Đang nghĩ cách sửa... ');
   let edited = null;
   let lastProblem = '';
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -83,53 +83,53 @@ export async function runEdit(args = []) {
       const { text } = await chatCompletion(cfg, { model: model || cfg.model, messages });
       const fenced = /```[^\n]*\n[\s\S]*?```/.test(text || '');
       const cand = extractEdited(text || '');
-      if (!fenced) lastProblem = 'cau tra loi khong chua khoi ma ```...``` nao';
-      else if (cand.replace(/\s+$/, '') === original.replace(/\s+$/, '')) lastProblem = 'noi dung tra ve giong het file goc (model chua sua gi)';
+      if (!fenced) lastProblem = 'câu trả lời không chứa khối mã ```...``` nào';
+      else if (cand.replace(/\s+$/, '') === original.replace(/\s+$/, '')) lastProblem = 'nội dung trả về giống hệt file gốc (model chưa sửa gì)';
       else { edited = cand; break; }
       if (attempt === 1) {
-        console.log(`chua dat (${lastProblem}) — thu lai 1 lan...`);
+        console.log(`chưa đạt (${lastProblem}) — thử lại 1 lần...`);
         messages.push({ role: 'assistant', content: text || '' });
-        messages.push({ role: 'user', content: `Noi dung ban vua tra ve khong dung: ${lastProblem}. Hay tra ve lai TOAN BO file da sua, chi gom DUY NHAT 1 khoi \`\`\`...\`\`\`, khong kem giai thich ben ngoai khoi.` });
-        process.stdout.write('Dang nghi cach sua (lan 2)... ');
+        messages.push({ role: 'user', content: `Nội dung bạn vừa trả về không đúng: ${lastProblem}. Hãy trả về lại TOÀN BỘ file đã sửa, chỉ gồm DUY NHẤT 1 khối \`\`\`...\`\`\`, không kèm giải thích bên ngoài khối.` });
+        process.stdout.write('Đang nghĩ cách sửa (lần 2)... ');
       }
     } catch (e) {
       lastProblem = e.message;
       if (attempt === 1) {
-        console.log(`loi (${e.message}) — thu lai 1 lan...`);
-        process.stdout.write('Dang nghi cach sua (lan 2)... ');
+        console.log(`lỗi (${e.message}) — thử lại 1 lần...`);
+        process.stdout.write('Đang nghĩ cách sửa (lần 2)... ');
       }
     }
   }
   if (edited === null) {
     console.log('');
-    console.error(`Khong sua duoc sau 2 lan thu: ${lastProblem}`);
+    console.error(`Không sửa được sau 2 lần thử: ${lastProblem}`);
     process.exitCode = 1;
     return;
   }
   console.log('xong.\n');
-  console.log(`--- Diff de xuat cho ${file} ---`);
+  console.log(`--- Diff đề xuất cho ${file} ---`);
   console.log(formatDiff(original, edited));
   console.log('-------------------------------');
   if (dry) {
-    console.log('Che do --dry: chua ghi file.');
+    console.log('Chế độ --dry: chưa ghi file.');
     return;
   }
   let ok = yes;
   if (!ok) {
     if (!process.stdin.isTTY) {
-      console.log('Khong phai terminal tuong tac — chay lai voi --yes de ghi, hoac --dry de chi xem.');
+      console.log('Không phải terminal tương tác — chạy lại với --yes để ghi, hoặc --dry để chỉ xem.');
       return;
     }
-    ok = await askConfirm('Ghi file voi noi dung moi nay? (y/N) ');
+    ok = await askConfirm('Ghi file với nội dung mới này? (y/N) ');
   }
   if (!ok) {
-    console.log('Da huy, file giu nguyen.');
+    console.log('Đã huỷ, file giữ nguyên.');
     return;
   }
   await backupFile(abs);
   const out = original.endsWith('\n') && !edited.endsWith('\n') ? edited + '\n' : edited;
   await fs.writeFile(abs, out, 'utf8');
-  console.log(`Da ghi ${file}. (Muon quay lai: pe undo ${file})`);
+  console.log(`Đã ghi ${file}. (Muốn quay lại: pe undo ${file})`);
 }
 
 export async function runUndo(args = []) {
@@ -137,7 +137,7 @@ export async function runUndo(args = []) {
   if (!target) {
     const latest = await latestBackup();
     if (!latest) {
-      console.log('Chua co ban backup nao de khoi phuc.');
+      console.log('Chưa có bản backup nào để khôi phục.');
       return;
     }
     target = latest.file;
@@ -145,8 +145,8 @@ export async function runUndo(args = []) {
   const abs = path.resolve(target);
   const entry = await restoreLatest(abs);
   if (!entry) {
-    console.log(`Khong co ban backup nao cho ${target}.`);
+    console.log(`Không có bản backup nào cho ${target}.`);
     return;
   }
-  console.log(`Da khoi phuc ${target} ve ban ${new Date(entry.at).toLocaleString('vi-VN')}.`);
+  console.log(`Đã khôi phục ${target} về bản ${new Date(entry.at).toLocaleString('vi-VN')}.`);
 }

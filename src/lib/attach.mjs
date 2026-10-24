@@ -42,7 +42,7 @@ async function statOrThrow(p, kind) {
   try {
     st = await fs.stat(p);
   } catch {
-    throw new Error(`Khong tim thay ${kind}: ${p}`);
+    throw new Error(`Không tìm thấy ${kind}: ${p}`);
   }
   if (!st.isFile()) throw new Error(`${kind} khong phai file: ${p}`);
   return st;
@@ -52,7 +52,7 @@ async function statOrThrow(p, kind) {
 export async function readTextAttachment(p) {
   const st = await statOrThrow(p, 'file');
   if (st.size > MAX_TEXT_BYTES) {
-    throw new Error(`File qua lon (${fmtBytes(st.size)} > ${fmtBytes(MAX_TEXT_BYTES)}): ${p}. Hay chia nho file hoac gui dung phan can thiet.`);
+    throw new Error(`File quá lớn (${fmtBytes(st.size)} > ${fmtBytes(MAX_TEXT_BYTES)}): ${p}. Hãy chia nhỏ file hoặc gửi đúng phần cần thiết.`);
   }
   const buf = await fs.readFile(p);
   if (buf.includes(0)) {
@@ -64,10 +64,10 @@ export async function readTextAttachment(p) {
 /** Doc 1 anh -> { label, dataUrl, bytes } */
 export async function readImageAttachment(p) {
   const mime = IMAGE_MIME[path.extname(p).toLowerCase()];
-  if (!mime) throw new Error(`Khong ho tro dinh dang anh nay: ${p} (ho tro: png, jpg, jpeg, gif, webp, bmp)`);
+  if (!mime) throw new Error(`Không hỗ trợ định dạng ảnh này: ${p} (hỗ trợ: png, jpg, jpeg, gif, webp, bmp)`);
   const st = await statOrThrow(p, 'anh');
   if (st.size > MAX_IMAGE_BYTES) {
-    throw new Error(`Anh qua lon (${fmtBytes(st.size)} > ${fmtBytes(MAX_IMAGE_BYTES)}): ${p}. Hay giam kich thuoc anh truoc khi gui.`);
+    throw new Error(`Ảnh quá lớn (${fmtBytes(st.size)} > ${fmtBytes(MAX_IMAGE_BYTES)}): ${p}. Hãy giảm kích thước ảnh trước khi gửi.`);
   }
   const buf = await fs.readFile(p);
   return { label: p, dataUrl: `data:${mime};base64,${buf.toString('base64')}`, bytes: st.size, large: st.size > WARN_IMAGE_BYTES };
@@ -123,7 +123,7 @@ export async function collectAttachments({ files = [], images = [], stdinText = 
   }
   for (const p of images) {
     const a = await readImageAttachment(p);
-    if (a.large) notes.push(`Anh ${p} kha lon (${fmtBytes(a.bytes)}) — gui nguyen ban co the cham/bi tu choi; nen giam xuong duoi ${fmtBytes(WARN_IMAGE_BYTES)} neu gap loi.`);
+    if (a.large) notes.push(`Ảnh ${p} khá lớn (${fmtBytes(a.bytes)}) — gửi nguyên bản có thể chậm/bị từ chối; nên giảm xuống dưới ${fmtBytes(WARN_IMAGE_BYTES)} nếu gặp lỗi.`);
     imageParts.push(a);
   }
   return { textBlocks, images: imageParts, notes };
@@ -152,5 +152,5 @@ export function describeAttachments(att) {
   const parts = [];
   for (const b of att.textBlocks) parts.push(`file ${b.label} (${fmtBytes(b.bytes)})`);
   for (const im of att.images) parts.push(`anh ${im.label} (${fmtBytes(im.bytes)})`);
-  return parts.length ? `[Da gui kem: ${parts.join(', ')}]` : '';
+  return parts.length ? `[Đã gửi kèm: ${parts.join(', ')}]` : '';
 }

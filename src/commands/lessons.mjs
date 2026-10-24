@@ -12,13 +12,13 @@ function printScope(label, scope) {
   if (!scope) return;
   console.log(`\n[${label}] ${scope.path}`);
   if (!scope.entries.length) {
-    console.log('  (chua co bai hoc nao)');
+    console.log('  (chưa có bài học nào)');
     return;
   }
   scope.entries.forEach((e, i) => {
     console.log(`  ${i + 1}. (${e.date} · ${e.tag} · x${e.count}) ${e.loi}`);
-    if (e.gocRe) console.log(`     Goc re: ${e.gocRe}`);
-    console.log(`     Lan sau: ${e.lanSau}`);
+    if (e.gocRe) console.log(`     Gốc rễ: ${e.gocRe}`);
+    console.log(`     Lần sau: ${e.lanSau}`);
   });
 }
 
@@ -32,8 +32,8 @@ export async function runLessons(args = []) {
     const total = (all.project?.entries.length || 0) + all.global.entries.length;
     console.log(
       total
-        ? '\nCac bai hoc tren tu dong duoc nap vao system prompt moi phien (toi da 15 bai, uu tien bai tai pham nhieu).'
-        : '\nChua co bai hoc nao. Bai hoc tu dong se duoc de xuat khi agent pham loi roi sua xong trong pe do / pe chat (anh duyet moi luu), hoac ghi tay: pe lessons add "..."'
+        ? '\nCác bài học trên tự động được nạp vào system prompt mỗi phiên (tối đa 15 bài, ưu tiên bài tái phạm nhiều).'
+        : '\nChưa có bài học nào. Bài học tự động sẽ được đề xuất khi agent phạm lỗi rồi sửa xong trong pe do / pe chat (anh duyệt mới lưu), hoặc ghi tay: pe lessons add "..."'
     );
     return;
   }
@@ -42,18 +42,18 @@ export async function runLessons(args = []) {
     const global = args.includes('--global');
     const text = args.slice(1).filter((a) => a !== '--global').join(' ').trim();
     if (!text) {
-      console.error('Dung: pe lessons add "<noi dung bai hoc>" [--global]');
+      console.error('Dùng: pe lessons add "<nội dung bài học>" [--global]');
       process.exitCode = 2;
       return;
     }
     const r = await saveLesson(
-      { loi: 'Bai hoc ghi tay', gocRe: '', lanSau: text, tag: 'manual' },
+      { loi: 'Bài học ghi tay', gocRe: '', lanSau: text, tag: 'manual' },
       global ? 'global' : 'project'
     );
     console.log(
       r.action === 'merged'
-        ? `Da gop vao bai hoc tuong tu (bay gio x${r.entry.count}) — ${r.file}`
-        : `Da luu bai hoc moi (${global ? 'toan cuc' : 'project'}) — ${r.file}`
+        ? `Đã gộp vào bài học tương tự (bây giờ x${r.entry.count}) — ${r.file}`
+        : `Đã lưu bài học mới (${global ? 'toàn cục' : 'project'}) — ${r.file}`
     );
     return;
   }
@@ -62,20 +62,20 @@ export async function runLessons(args = []) {
     const scope = args[1];
     const idx = Number(args[2]);
     if (!['project', 'global'].includes(scope) || !Number.isInteger(idx) || idx < 1) {
-      console.error('Dung: pe lessons rm <project|global> <so thu tu>');
+      console.error('Dùng: pe lessons rm <project|global> <số thứ tự>');
       process.exitCode = 2;
       return;
     }
     const gone = await removeLesson(scope, idx);
     if (!gone) {
-      console.error(`Khong co bai hoc so ${idx} o pham vi ${scope}.`);
+      console.error(`Không có bài học số ${idx} ở phạm vi ${scope}.`);
       process.exitCode = 2;
       return;
     }
-    console.log(`Da xoa bai hoc: ${gone.loi} / ${gone.lanSau}`);
+    console.log(`Đã xoá bài học: ${gone.loi} / ${gone.lanSau}`);
     return;
   }
 
-  console.error('Dung: pe lessons [list] | pe lessons add "<noi dung>" [--global] | pe lessons rm <project|global> <so>');
+  console.error('Dùng: pe lessons [list] | pe lessons add "<nội dung>" [--global] | pe lessons rm <project|global> <số>');
   process.exitCode = 2;
 }

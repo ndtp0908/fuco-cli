@@ -6,20 +6,20 @@ import { createHash } from 'node:crypto';
 import { chatCompletion } from './api.mjs';
 import { TOOL_DEFS, describeToolCall } from './tools.mjs';
 
-export const AGENT_SYSTEM = `Ban la pe, tro ly coding chay trong terminal cua nguoi dung, thao tac truc tiep tren project hien tai bang tools.
+export const AGENT_SYSTEM = `Bạn là pé, trợ lý coding chạy trong terminal của người dùng, thao tác trực tiếp trên project hiện tại bằng tools.
 
 Tools: read_file, write_file, edit_file, list_files, grep, run_bash.
 
-Quy tac:
-- Can dung tool thi goi tool (native tool call, hoac tra ve DUY NHAT 1 khoi json nhu sau, khong kem giai thich):
+Quy tắc:
+- Cần dùng tool thì gọi tool (native tool call, hoặc trả về DUY NHẤT 1 khối json như sau, không kèm giải thích):
 \`\`\`json
 {"tool": "read_file", "args": {"path": "src/Program.cs"}}
 \`\`\`
-- Xong viec thi tra loi text binh thuong, ngan gon, neu ro da sua file nao.
-- Truoc khi sua file nen doc file truoc. Sua nho dung edit_file (old_text phai khop nguyen van, xuat hien dung 1 lan).
-- File dai: read_file tra theo doan va ghi ro dong con lai — doc TIEP bang start o cuoi ket qua, dung doc lai doan da doc. Khong bao gio goi lai dung 1 tool voi dung args nhu cu (he thong se phat hien lap va dung).
-- Khong tu y chay lenh nguy hiem. Neu tool bao LOI thi doc ky ly do roi moi thu lai.
-- Duong dan file luon tuong doi so voi goc project.`;
+- Xong việc thì trả lời text bình thường, ngắn gọn, nêu rõ đã sửa file nào.
+- Trước khi sửa file nên đọc file trước. Sửa nhỏ dùng edit_file (old_text phải khớp nguyên văn, xuất hiện đúng 1 lần).
+- File dài: read_file trả theo đoạn và ghi rõ dòng còn lại — đọc TIẾP bằng start ở cuối kết quả, đừng đọc lại đoạn đã đọc. Không bao giờ gọi lại đúng 1 tool với đúng args như cũ (hệ thống sẽ phát hiện lặp và dừng).
+- Không tự ý chạy lệnh nguy hiểm. Nếu tool báo LOI thì đọc kỹ lý do rồi mới thử lại.
+- Đường dẫn file luôn tương đối so với gốc project.`;
 
 const TOOL_JSON_RE = /```(?:json)?\s*(\{[\s\S]*?\})\s*```/;
 
@@ -162,11 +162,11 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
         const errs = unresolved
           .map((i) => `- ${i.desc}: ${String(i.error).split('\n')[0].slice(0, 160)}`)
           .join('\n');
-        note(`[tu chua] Con ${unresolved.length} loi chua xu ly — pe yeu cau model sua tiep thay vi ket thuc.`);
+        note(`[tự chữa] Còn ${unresolved.length} lỗi chưa xử lý — pé yêu cầu model sửa tiếp thay vì kết thúc.`);
         messages.push({ role: 'assistant', content: reply.text });
         messages.push({
           role: 'user',
-          content: `Van con loi chua duoc xu ly:\n${errs}\n\nHay dung tool sua cho xong roi kiem tra lai ket qua. Neu that su khong the sua thi tra loi giai thich ro ly do, khong goi tool nua.`,
+          content: `Vẫn còn lỗi chưa được xử lý:\n${errs}\n\nHãy dùng tool sửa cho xong rồi kiểm tra lại kết quả. Nếu thật sự không thể sửa thì trả lời giải thích rõ lý do, không gọi tool nữa.`,
         });
         unresolved.length = 0;
         reply = null;
@@ -177,7 +177,7 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
     }
 
     if (steps >= maxSteps) {
-      const msg = `Da dung ${maxSteps} luot tool trong 1 phien lam viec. Pe dung lai tai day — anh go "tiep tuc" de pe lam tiep tu cho nay (cac tool da chay van con trong ngu canh, pe khong lam lai tu dau).`;
+      const msg = `Đã dùng ${maxSteps} lượt tool trong 1 phiên làm việc. Pé dừng lại tại đây — anh gõ "tiếp tục" để pé làm tiếp từ chỗ này (các tool đã chạy vẫn còn trong ngữ cảnh, pé không làm lại từ đầu).`;
       note(msg);
       messages.push({ role: 'assistant', content: msg });
       return { text: msg, steps, stopped: 'cap', incidents, unresolved };
@@ -190,7 +190,7 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
       if (batchSeen.has(key)) {
         // Trung nguyen xi trong CHINH vong tra loi nay: khong chay lai,
         // tra ghi chu de model dung ngay ket qua vua co.
-        results.push(`- ${call.name}: (trung voi loi goi vua chay o tren — dung lai ket qua do, dung goi lai)`);
+        results.push(`- ${call.name}: (trùng với lời gọi vừa chạy ở trên — dùng lại kết quả đó, đừng gọi lại)`);
         continue;
       }
       steps++;
@@ -218,14 +218,14 @@ export async function runAgent({ cfg, model, messages, runner, onEvent, maxSteps
     }
 
     if (stall >= stallLimit) {
-      const msg = `Phat hien vong lap that: pe vua goi trung cac tool giong het nhau ${stall} lan lien tiep ma khong ra them thong tin moi nen pe dung lai. Anh xem ket qua tam thoi o tren, neu can thi noi ro buoc tiep theo (hoac file/doan cu the) de pe lam tiep.`;
+      const msg = `Phát hiện vòng lặp thật: pé vừa gọi trùng các tool giống hệt nhau ${stall} lần liên tiếp mà không ra thêm thông tin mới nên pé dừng lại. Anh xem kết quả tạm thời ở trên, nếu cần thì nói rõ bước tiếp theo (hoặc file/đoạn cụ thể) để pé làm tiếp.`;
       note(msg);
       messages.push({ role: 'user', content: `Ket qua tool:\n${results.join('\n\n')}` });
       messages.push({ role: 'assistant', content: msg });
       return { text: msg, steps, stopped: 'loop', incidents, unresolved };
     }
 
-    messages.push({ role: 'user', content: `Ket qua tool:\n${results.join('\n\n')}\n\n(Neu can them tool thi goi tiep; xong thi tra loi ket qua cuoi cho nguoi dung.)` });
+    messages.push({ role: 'user', content: `Ket qua tool:\n${results.join('\n\n')}\n\n(Nếu cần thêm tool thì gọi tiếp; xong thì trả lời kết quả cuối cho người dùng.)` });
     reply = null;
   }
 }

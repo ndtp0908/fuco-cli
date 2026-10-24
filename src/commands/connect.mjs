@@ -8,11 +8,11 @@ export async function runConnect(args = []) {
   const cfg = await loadConfig();
   if (args[0] === 'export') {
     if (!cfg.workerUrl || !cfg.proxySecret) {
-      console.error('May nay chua co cau hinh de xuat (thieu workerUrl/proxySecret). Chay `pe init` truoc.');
+      console.error('Máy này chưa có cấu hình để xuất (thiếu workerUrl/proxySecret). Chạy `pe init` trước.');
       process.exitCode = 2;
       return;
     }
-    const password = process.env.PE_CONNECT_PASSWORD || (await askHidden('Dat mat khau cho ma ket noi (it nhat 4 ky tu)'));
+    const password = process.env.PE_CONNECT_PASSWORD || (await askHidden('Đặt mật khẩu cho mã kết nối (ít nhất 4 ký tự)'));
     let code;
     try {
       code = encodeConnectCode({
@@ -27,16 +27,16 @@ export async function runConnect(args = []) {
       process.exitCode = 2;
       return;
     }
-    console.log('\nMa ket noi cua ban (copy toan bo 1 dong):\n');
+    console.log('\nMã kết nối của bạn (copy toàn bộ 1 dòng):\n');
     console.log(code);
-    console.log('\nSang may moi chi can chay:  pe init --code <dan-ma-vao-day>');
-    console.log('(se hoi mat khau vua dat). Ma chi chua cau hinh ket noi, khong chua lich su chat.');
+    console.log('\nSang máy mới chỉ cần chạy:  pe init --code <dán-mã-vào-đây>');
+    console.log('(sẽ hỏi mật khẩu vừa đặt). Mã chỉ chứa cấu hình kết nối, không chứa lịch sử chat.');
     return;
   }
-  console.log('Ket noi hien tai:');
-  console.log(`  Worker chinh : ${cfg.workerUrl || '(chua co)'}`);
+  console.log('Kết nối hiện tại:');
+  console.log(`  Worker chính : ${cfg.workerUrl || '(chưa có)'}`);
   console.log(`  Pe-worker    : ${cfg.peWorkerUrl}`);
   console.log(`  Model        : ${cfg.model}`);
-  console.log(`  Secret       : ${cfg.proxySecret ? 'da co (dang an)' : '(chua co)'}`);
-  console.log('\nTao ma de chuyen sang may khac: pe connect export');
+  console.log(`  Secret       : ${cfg.proxySecret ? 'đã có (đang ẩn)' : '(chưa có)'}`);
+  console.log('\nTạo mã để chuyển sang máy khác: pe connect export');
 }

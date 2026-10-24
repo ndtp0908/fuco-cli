@@ -24,11 +24,11 @@ function doRl() {
 export function makeConfirm() {
   return (desc) => new Promise((resolve) => {
     if (!process.stdin.isTTY) {
-      console.log(`  [can duyet] ${desc} — khong phai terminal nen tu choi (dung --yolo hoac chat de duyet tay).`);
+      console.log(`  [cần duyệt] ${desc} — không phải terminal nên từ chối (dùng --yolo hoặc chat để duyệt tay).`);
       resolve(false);
       return;
     }
-    doRl().question(`  Cho phep ${desc}? (y/N) `, (a) => resolve(/^y(es)?$/i.test(a.trim())));
+    doRl().question(`  Cho phép ${desc}? (y/N) `, (a) => resolve(/^y(es)?$/i.test(a.trim())));
   });
 }
 
@@ -67,14 +67,14 @@ export async function runDo(args = []) {
   }
   const task = taskParts.join(' ').trim();
   if (!task) {
-    console.error('Dung: pe do "<viec can lam>" [--yolo] [--approval 1|2|3] [--web] [--verify "<lenh kiem chung>"]');
+    console.error('Dùng: pe do "<việc cần làm>" [--yolo] [--approval 1|2|3] [--web] [--verify "<lệnh kiểm chứng>"]');
     process.exitCode = 2;
     return;
   }
   const cfg = await loadConfig();
   const miss = missingFields(cfg);
   if (miss.length) {
-    console.error(`Chua cau hinh du: thieu ${miss.join(', ')}. Chay \`pe init\` truoc.`);
+    console.error(`Chưa cấu hình đủ: thiếu ${miss.join(', ')}. Chạy \`pe init\` trước.`);
     process.exitCode = 2;
     return;
   }
@@ -82,10 +82,10 @@ export async function runDo(args = []) {
   const ctx = await loadContextWithLessons();
   const runner = createToolRunner({ root: process.cwd(), approval: level, confirm: makeConfirm() });
   const messages = [
-    { role: 'system', content: AGENT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgu canh project:\n${ctx.text}` : '') },
+    { role: 'system', content: AGENT_SYSTEM + `\n\n${currentTimeLine()}` + (ctx ? `\n\nNgữ cảnh project:\n${ctx.text}` : '') },
     { role: 'user', content: task },
   ];
-  console.log(`pe do (muc duyet ${level}${level === 3 ? ' — yolo' : ''}${web ? ', web: bat' : ''}${verifyCmd ? `, verify: ${verifyCmd}` : ''}): ${task}\n`);
+  console.log(`pe do (mức duyệt ${level}${level === 3 ? ' — yolo' : ''}${web ? ', web: bật' : ''}${verifyCmd ? `, verify: ${verifyCmd}` : ''}): ${task}\n`);
   const sharedSeen = new Map();
   try {
     const first = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, web, seen: sharedSeen });
@@ -99,28 +99,28 @@ export async function runDo(args = []) {
     // FAIL thi dua nguyen output ve cho agent sua tiep, toi da 2 vong.
     if (verifyCmd) {
       for (let round = 0; round <= 2; round++) {
-        console.log(`\n[kiem chung] chay: ${verifyCmd}`);
+        console.log(`\n[kiểm chứng] chạy: ${verifyCmd}`);
         const vres = String(await runner.run('run_bash', { command: verifyCmd }));
-        if (vres.startsWith('Nguoi dung TU CHOI')) {
-          console.log('[kiem chung] bi tu choi duyet — bo qua kiem chung.');
+        if (vres.startsWith('Người dùng TỪ CHỐI')) {
+          console.log('[kiểm chứng] bị từ chối duyệt — bỏ qua kiểm chứng.');
           break;
         }
         const vFail = vres.startsWith('LOI:') || /\nExit: [1-9]/.test(`\n${vres}`);
         console.log(vres.split('\n').slice(0, 6).join('\n'));
         if (!vFail) {
-          console.log('[kiem chung] PASS ✓');
+          console.log('[kiểm chứng] PASS ✓');
           break;
         }
         if (round === 2) {
-          console.log('[kiem chung] Van FAIL sau 2 vong sua — pe dung lai tai day, anh xem output loi o tren.');
+          console.log('[kiểm chứng] Vẫn FAIL sau 2 vòng sửa — pé dừng lại tại đây, anh xem output lỗi ở trên.');
           verifyFailed = true;
           process.exitCode = 1;
           break;
         }
-        console.log(`[kiem chung] FAIL — dua loi ve cho agent sua tiep (vong ${round + 1}/2)...`);
+        console.log(`[kiểm chứng] FAIL — đưa lỗi về cho agent sửa tiếp (vòng ${round + 1}/2)...`);
         messages.push({
           role: 'user',
-          content: `Lenh kiem chung \`${verifyCmd}\` THAT BAI. Ket qua chay:\n${vres.slice(0, 3000)}\n\nHay sua code de lenh kiem chung nay chay thanh cong (Exit: 0).`,
+          content: `Lệnh kiểm chứng \`${verifyCmd}\` THẤT BẠI. Kết quả chạy:\n${vres.slice(0, 3000)}\n\nHãy sửa code để lệnh kiểm chứng này chạy thành công (Exit: 0).`,
         });
         const fix = await runAgent({ cfg, model: cfg.model, messages, runner, onEvent: printAgentEvent, seen: sharedSeen });
         if (fix.incidents) allIncidents.push(...fix.incidents);
@@ -135,13 +135,13 @@ export async function runDo(args = []) {
       try {
         const candidates = await distillLessons(cfg, { task, incidents: allIncidents, finalText });
         if (candidates.length) {
-          console.log('\nTrong luc lam viec pe co pham loi roi tu sua duoc. Pe rut ra bai hoc sau — anh duyet thi pe moi luu lai cho lan sau:');
+          console.log('\nTrong lúc làm việc pé có phạm lỗi rồi tự sửa được. Pé rút ra bài học sau — anh duyệt thì pé mới lưu lại cho lần sau:');
           await reviewAndSaveLessons({ candidates, ask: askYesNoShared });
         }
       } catch { /* rut bai hoc loi thi bo qua — khong chan viec chinh */ }
     }
   } catch (e) {
-    console.error(`Loi: ${e.message}`);
+    console.error(`Lỗi: ${e.message}`);
     process.exitCode = 1;
   }
 }

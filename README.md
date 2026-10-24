@@ -1,141 +1,175 @@
-# pe — CLI trợ lý coding
+# pe — a coding assistant CLI
 
-`pe` là dòng lệnh để trò chuyện với pé qua **fuco-agent worker** (Cloudflare Worker, OpenAI-compatible).
-Đã hoàn thành cả 3 bước: **Bước 0** (`ask`/`chat`/`init`/`doctor`/`model` + đính kèm file/ảnh), **Bước 1** (agent dùng tools trong project: `pe do`, `pe edit`, `pe undo`), **Bước 2** (phiên chat lưu/mở lại + auto-compact + `pe assign` giao việc dài qua hàng đợi), **Bước 3** (đóng gói 1 file `.exe`). Kèm streaming và bộ nhớ theo project.
+`pe` is a command-line client for chatting with pé through the **fuco-agent worker** (a Cloudflare Worker, OpenAI-compatible).
+All three milestones are complete: **Step 0** (`ask`/`chat`/`init`/`doctor`/`model` + file/image attachments), **Step 1** (an agent with tools inside your project: `pe do`, `pe edit`, `pe undo`), **Step 2** (persistent chat sessions + auto-compact + `pe assign` for long-running tasks via a queue), **Step 3** (packaged as a single `.exe`). It also includes streaming and per-project memory.
 
-## Cài đặt
+## Installation
 
-Yêu cầu Node.js ≥ 18. Không phụ thuộc thư viện ngoài.
+Requires Node.js ≥ 18. Zero external dependencies.
 
 ```bash
 git clone https://github.com/ndtp0908/fuco-cli.git
 cd fuco-cli
-npm link        # để gọi `pe` ở mọi nơi (hoặc: node src/pe.mjs ...)
+npm link        # makes `pe` available everywhere (or run: node src/pe.mjs ...)
 ```
 
-## Cấu hình lần đầu
+## First-time setup
 
 ```bash
 pe init
 ```
 
-Wizard hỏi Worker URL, **Proxy secret** (`MY_SECRET` trên worker, nhập ẩn) và model mặc định (phải là `:free`), lưu vào `~/.pe/config.json` (quyền 600) rồi tự thử kết nối.
+The wizard asks for the Worker URL, the **Proxy secret** (`MY_SECRET` on the worker, entered hidden) and the default model (must end in `:free`), saves them to `~/.pe/config.json` (mode 600), then tests the connection right away.
 
-**Cấu hình là toàn cục**: init một lần, dùng ở **mọi thư mục project**. Biến môi trường ghi đè khi có: `PE_WORKER_URL`, `PE_PROXY_SECRET`, `PE_MODEL`, `PE_APPROVAL`, `PE_HOME`.
+**Configuration is global**: run `pe init` once and it works in **every project directory**. Environment variables override the file when present: `PE_WORKER_URL`, `PE_PROXY_SECRET`, `PE_MODEL`, `PE_APPROVAL`, `PE_HOME`.
 
-### Cấu hình + bộ nhớ theo project (tuỳ chọn)
+### Managing configuration (v0.10)
+
+No need to hunt for files anymore — everything is visible and editable from the CLI itself:
+
+```bash
+pe config                 # overview: every effective value + its source
+                          # (env / project / file / default), plus the state
+                          # of context.md, lessons.md, .muserules
+pe config get model       # read one value (secrets are always masked)
+pe config set <key> <value>            # write to the global config
+pe config set --project model <id>     # write to the project's .pe/config.json
+pe config edit [global|project|context|lessons|rules]   # open the file in your editor
+pe config path            # print all important paths
+```
+
+Global keys: `workerUrl`, `peWorkerUrl`, `proxySecret`, `model`, `approval`, `fallbackModels`, `updateUrl`.
+
+### Per-project configuration + memory (optional)
 
 ```bash
 cd my-project
 pe init --project
 ```
 
-Tạo thư mục `.pe/` trong project:
-- `.pe/config.json` — ghi đè `model` và mức duyệt riêng cho project này (secret không bao giờ đọc từ project).
-- `.pe/context.md` — **bộ nhớ project**: viết vào đó stack, quy ước code, lệnh build/test... Pe tự nạp vào mọi câu hỏi khi bạn đứng trong project (kể cả thư mục con). Thứ tự ưu tiên: biến môi trường > `.pe/config.json` > `~/.pe/config.json`.
+Creates a `.pe/` folder in the project:
 
-## Dùng
+- `.pe/config.json` — overrides `model` and the approval level for this project only (secrets are never read from a project).
+- `.pe/context.md` — **project memory**: write your stack, code conventions, build/test commands... Pé loads it into every question while you are inside the project (including subfolders). Precedence: environment variables > `.pe/config.json` > `~/.pe/config.json`.
 
-```bash
-pe ask "giải thích đoạn code này"          # trả lời STREAMING, chữ chảy trực tiếp
-pe chat                                     # trò chuyện liên tục (có agent)
-pe do "thêm xử lý chia cho 0 vào Calculator.cs rồi build thử"
-pe edit src\Calculator.cs "thêm kiểm tra chia cho 0"   # xem diff, duyệt mới ghi
-pe undo src\Calculator.cs                   # quay lui bản trước khi pe sửa
-pe doctor                                   # kiểm tra cấu hình + kết nối worker
-pe model list                               # liệt kê model :free
-pe help do                                  # hướng dẫn chi tiết từng lệnh
-```
-
-### Đính kèm file / ảnh (ask & chat)
+## Usage
 
 ```bash
-pe ask "review file này" --file src\Program.cs        # ≤ 256 KB/file
-pe ask "màn hình này lỗi gì" --image loi.png          # cần model vision :free
-pe ask "sửa lỗi trong @src\Helper.cs giúp"            # @đường-dẫn ngay trong câu
-type Program.cs | pe ask "chỉ ra bug"                 # stdin gửi kèm như 1 file
+pe ask "explain this piece of code"        # STREAMING answer, text flows live
+pe chat                                     # continuous conversation (agent built in)
+pe do "add divide-by-zero handling to Calculator.cs, then build"
+pe edit src\Calculator.cs "add a divide-by-zero check"   # shows a diff, writes only after you approve
+pe undo src\Calculator.cs                   # roll back to the version before pé edited it
+pe doctor                                   # check configuration + worker connection
+pe model list                               # list :free models
+pe help do                                  # detailed help for each command
 ```
 
-Trong `pe chat`: `/file`, `/image` gắn cho tin nhắn tiếp theo, `/attach` xem đang chờ.
-Model mặc định không nhận ảnh — dùng model vision `:free`, ví dụ `nvidia/nemotron-3.5-super-vl:free` (CLI tự gợi ý khi dùng nhầm).
-
-### Agent & mức duyệt (Bước 1)
-
-`pe do "<việc>"` và `pe chat` (mặc định bật tools, tắt bằng `/tools off`) cho model dùng tools ngay trong project: `read_file`, `write_file`, `edit_file`, `list_files`, `grep`, `run_bash`. Model gọi tool qua native tool-calls hoặc khối JSON (tự fallback). Mọi thao tác bị khoá trong thư mục project; mỗi lần ghi file đều **backup trước** vào `~/.pe/backups` nên `pe undo` khôi phục được.
-
-Mức duyệt (`pe do --approval`, `/approval` trong chat, hoặc `approval` trong config):
-- **1** — hỏi trước mọi thao tác sửa/chạy lệnh
-- **2** — (mặc định) đọc + ghi trong project tự do, lệnh shell lạ thì hỏi, lệnh chỉ-xem (git status, ls...) tự chạy
-- **3** — `--yolo`: tự do hết, chỉ chặn cứng lệnh phá hoại (format, rm -rf /, ...)
-
-Trong chat còn có: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model`, `/models`, `/clear`, `/help`.
-
-`pe edit` là đường ngắn cho quy trình code công ty: pe đề xuất bản sửa → hiện **diff** → bạn duyệt → mới ghi (có backup). `--dry` chỉ xem diff, `--yes` ghi ngay không hỏi.
-
-## Mượt mà hơn (v0.4.0 — 3 gói cải tiến)
-
-**v0.5.1:** loi mang tu hien goi y cu the (SELF_SIGNED_CERT_IN_CHAIN → huong dan NODE_EXTRA_CA_CERTS).
-
-**v0.5.0:** `pe backup [--out]` / `pe restore <file> [--force]` — đóng gói toàn bộ trạng thái (cấu hình + mọi phiên chat + việc đã giao) thành 1 file `.pebak` mã hoá bằng mật khẩu; máy mới restore là nguyên trạng.
-
-**Máy công ty (gói A):**
-- `pe connect export` → sinh **mã kết nối** mã hoá bằng mật khẩu; sang máy mới chỉ cần `pe init --code <mã>` là xong cấu hình, khỏi gõ URL/secret dài.
-- `pe update [--check]` → tự kiểm tra bản mới qua manifest `release/pe-update.json`, tải về, **verify SHA256** rồi mới thay exe (bản cũ giữ thành `.old`).
-- `pe result <id> --apply` → kết quả assign có file thì xem diff và ghi thẳng vào project (có backup).
-
-**Model ổn định (gói B):**
-- **Model dự phòng tự động**: model chính bị nghẽn/hết lượt/chết tên (429/5xx/400 model) thì CLI tự chuyển model free dự phòng (đặt qua `fallbackModels` trong config hoặc `PE_FALLBACK_MODELS`), có báo rõ model nào đang phục vụ.
-- `pe model list --vision` lọc model có vision; chat bấm **Ctrl+C** là ngắt lượt đang chạy mà không văng khỏi phiên.
-
-**Hợp nhất Cline + pe (gói C):**
-- `pe rules [install|export|import]` — một bộ nhớ project cho cả hai: pe nạp cả `.pe/context.md` lẫn `.muserules`; `install` cài bộ quy tắc Cline chuẩn (đọc trước khi sửa, không lặp quá 2 lần, kiểm chứng trước khi báo xong...).
-- `pe chat` tự nối lại phiên của đúng project đang đứng (`/new` khi muốn phiên mới).
-
-## Kiểm tra
+### File / image attachments (ask & chat)
 
 ```bash
-npm test   # 59 ca: config/env/project override, mock worker (sai secret, model non-free,
-           # mất mạng), streaming SSE, đính kèm file/ảnh/@mention/stdin, help chi tiết,
-           # pe edit + undo, agent pe do (đọc→sửa file), glob list_files, chat đa-tool JSON
+pe ask "review this file" --file src\Program.cs        # ≤ 256 KB/file
+pe ask "what is wrong in this screenshot" --image err.png   # needs a vision :free model
+pe ask "fix the bug in @src\Helper.cs please"           # @path right inside the question
+type Program.cs | pe ask "find the bug"                 # stdin is sent as a file
 ```
 
-## Thiết kế (đã chốt D1–D7)
+Inside `pe chat`: `/file`, `/image` stage an attachment for the next message, `/attach` shows what is staged.
+The default model cannot see images — use a vision `:free` model, e.g. `nvidia/nemotron-3.5-super-vl:free` (the CLI suggests one automatically when you pick wrong).
 
-- Tên lệnh `pe` (D1); repo riêng `ndtp0908/fuco-cli` (D7)
-- `pe assign` giao việc dài qua hàng đợi KV (D2) — xong ở Bước 2
-- Mức duyệt mặc định 2 (D3) — đã dùng thật từ Bước 1
-- Model mặc định = model free như app, đổi bằng `/model` hoặc `pe model` (D4)
-- Secret ở `~/.pe/config.json` qua wizard, env ghi đè (D5)
-- Đóng gói 1 file `.exe` bằng Node SEA (D6) — Bước 3
+### Agent & approval levels (Step 1)
 
-## Phiên chat & giao việc dài (Bước 2)
+`pe do "<task>"` and `pe chat` (tools on by default, disable with `/tools off`) let the model use tools right inside your project: `read_file`, `write_file`, `edit_file`, `list_files`, `grep`, `run_bash`. The model calls tools via native tool-calls or JSON blocks (automatic fallback). Every operation is locked inside the project folder; every file write is **backed up first** to `~/.pe/backups`, so `pe undo` can always restore it.
+
+Approval levels (`pe do --approval`, `/approval` in chat, or `approval` in config):
+
+- **1** — ask before every edit/command
+- **2** — (default) read + write freely inside the project, ask for unfamiliar shell commands, read-only commands (git status, ls...) run automatically
+- **3** — `--yolo`: everything goes, only destructive commands are hard-blocked (format, rm -rf /, ...)
+
+Also in chat: `/tools on|off`, `/approval 1|2|3`, `/undo [file]`, `/model`, `/models`, `/web on|off`, `/lesson <text>`, `/clear`, `/help`.
+
+`pe edit` is the short path for company code workflow: pé proposes an edit → shows a **diff** → you approve → only then it writes (with backup). `--dry` previews the diff only, `--yes` writes immediately without asking. If the model's reply is malformed, `pe edit` retries once with the specific problem fed back (v0.9).
+
+## Better every day
+
+**Self-healing agent (v0.9):** if the model tries to finish while tool errors are still unresolved, the agent refuses to end the turn and makes it fix them (1 extra "heal" round). `pe do "<task>" --verify "<command>"` runs a verification command after the work; on failure the output goes back to the agent for up to 2 fix rounds.
+
+**Lessons learned (v0.8):** when the agent makes a mistake during `pe do`/`pe chat` but fixes it, pé distills a short lesson (Mistake / Root cause / Next time) and **asks for your approval** before saving it to `.pe/lessons.md` (project) or `~/.pe/lessons.md` (global). Lessons are reloaded into the system prompt of later sessions; a repeated mistake bumps a counter (×2, ×3...) instead of duplicating. Manage them with `pe lessons`, `/lesson` in chat, and export them to Cline via `pe rules export`.
+
+**Smarter loop detection (v0.6):** loops are detected by *progress* (same tool + same args + identical result 3 times in a row), not by call count — long paged file reads no longer trigger false loop alarms. `read_file` pages at 400 lines with a footer pointing to the next `start`.
+
+**Web search (v0.7):** `pe ask --web`, `pe do --web`, `pe chat --web` (or `/web on`) — the worker searches the web server-side and injects results + sources into the answer.
+
+**Polish (v0.5.x):** network errors give specific hints (SELF_SIGNED_CERT_IN_CHAIN → corporate proxy CA guidance via `NODE_EXTRA_CA_CERTS`). `pe backup [--out]` / `pe restore <file> [--force]` pack the entire state (config + all chat sessions + assigned tasks) into one password-encrypted `.pebak` file; restore on a new machine brings everything back.
+
+**Corporate machine pack (v0.4):**
+
+- `pe connect export` → generates a connection code encrypted with a password; on a new machine just run `pe init --code <code>` and the configuration is done — no typing long URLs/secrets.
+- `pe update [--check]` → checks for a new version via the manifest `release/pe-update.json`, downloads it, **verifies SHA256**, then replaces the exe (the old one is kept as `.old`).
+- `pe result <id> --apply` → when an assign result contains files, review the diff and write them straight into the current project (with backup).
+
+**Stable models:**
+
+- **Automatic fallback models**: when the main model is congested / rate-limited / renamed (429/5xx/model 400), the CLI automatically switches to a fallback free model (set via `fallbackModels` in config or `PE_FALLBACK_MODELS`) and clearly reports which model is serving.
+- `pe model list --vision` filters vision-capable models; pressing **Ctrl+C** in chat cancels the current turn without leaving the session.
+
+**Cline + pe unified:**
+
+- `pe rules [install|export|import]` — one project memory for both tools: pé loads both `.pe/context.md` and `.muserules`; `install` adds pé's standard Cline rule pack (read before editing, never loop more than twice, verify before claiming done...).
+- `pe chat` automatically resumes the session belonging to the project you are standing in (`/new` starts a fresh one).
+
+## Tests
 
 ```bash
-pe chat                 # phiên tự lưu vào ~/.pe/sessions sau mỗi lượt
-pe chat --resume        # mở lại phiên gần nhất (kể cả sau khi tắt máy)
-pe sessions             # liệt kê các phiên đã lưu
-pe assign "review PR dang nhap, tim loi bao mat" --type review   # giao việc cho pe
-pe tasks                # xem hàng đợi
-pe result <task_id>     # lấy kết quả (hoặc thêm --wait ngay ở assign)
+npm test   # 84 checks: config/env/project override, mock worker (wrong secret,
+           # non-free model, network down), streaming SSE, file/image/@mention/
+           # stdin attachments, per-command help, pe edit + undo, the pe do
+           # agent (read→edit a file), glob list_files, multi-tool JSON chat,
+           # sessions + resume + rm, auto-compact, assign/tasks/result, lessons
+           # (distill/approve/dedupe), heal rounds, edit retry, --verify,
+           # pe config get/set, connect/backup/restore, update manifest
 ```
 
-Chat dài tự **rút gọn ngữ cảnh** (auto-compact): khi lịch sử vượt ~75% giới hạn (mặc định 100k token, đổi bằng `PE_CONTEXT_LIMIT`), pe tóm tắt các tin cũ nhất, giữ 12 tin gần nhất — bản tóm tắt lưu trong phiên nên mở lại vẫn liền mạch.
+## Design decisions (D1–D7, settled)
 
-`pe assign` gửi việc vào hàng đợi KV của pe-worker; pé xử lý theo chu kỳ (08:00–16:30, T2–T7). Types: `ask | review | plan | analyze | research | transform`.
+- Command name `pe` (D1); dedicated repo `ndtp0908/fuco-cli` (D7)
+- `pe assign` sends long tasks through the KV queue (D2) — done in Step 2
+- Default approval level 2 (D3) — in real use since Step 1
+- Default model = the same free model as the app, change with `/model` or `pe model` (D4)
+- Secrets live in `~/.pe/config.json` via the wizard, env overrides (D5)
+- Packaged as a single `.exe` with Node SEA (D6) — Step 3
 
-## Đóng gói .exe (Bước 3)
+## Chat sessions & long-running tasks (Step 2)
+
+```bash
+pe chat                 # the session auto-saves to ~/.pe/sessions after every turn
+pe chat --resume        # reopen the latest session (even after shutting down)
+pe sessions             # list saved sessions
+pe sessions rm <id>     # delete one session (v0.10)
+pe assign "review the login PR, look for security issues" --type review   # hand a task to pé
+pe tasks                # view the queue
+pe result <task_id>     # fetch the result (or add --wait to assign)
+```
+
+Long chats **auto-compact**: when the history exceeds ~75% of the limit (default 100k tokens, change with `PE_CONTEXT_LIMIT`), pé summarizes the oldest messages and keeps the 12 most recent ones — the summary is stored inside the session, so resuming stays seamless.
+
+`pe assign` pushes the task into the pe-worker KV queue; pé processes it on a cycle (08:00–21:30, Mon–Sat). Types: `ask | review | plan | analyze | research | transform`.
+
+## Packaging the .exe (Step 3)
 
 ```bash
 npm install
-npm run build:exe        # bản cho hệ điều hành đang chạy -> dist-exe/pe
-npm run build:exe:win    # tải node.exe Windows x64 -> dist-exe/pe.exe (~90 MB)
+npm run build:exe        # build for the current OS -> dist-exe/pe
+npm run build:exe:win    # download the Windows x64 node.exe -> dist-exe/pe.exe (~90 MB)
 ```
 
-Bản `.exe` chạy độc lập, **không cần cài Node**. Vì là bản tự đóng gói (Node SEA, tiêm blob vào node.exe) nên Windows có thể báo "unknown publisher"/SmartScreen lần đầu — chọn *More info → Run anyway*.
+The `.exe` runs standalone — **no Node installation needed**. Because it is self-packaged (Node SEA, a blob injected into node.exe), Windows may show "unknown publisher"/SmartScreen the first time — choose *More info → Run anyway*.
 
-## Lộ trình
+## Roadmap
 
-- ✅ Bước 0: ask/chat/init/doctor/model (+ đính kèm, help chi tiết, streaming, bộ nhớ project)
-- ✅ Bước 1: agent + tools, `pe do`, `pe edit`/`pe undo`
-- ✅ Bước 2: phiên chat lưu/mở lại + auto-compact, `pe assign` qua hàng đợi KV
-- ✅ Bước 3: đóng gói `.exe` một file bằng Node SEA
+- ✅ Step 0: ask/chat/init/doctor/model (+ attachments, detailed help, streaming, project memory)
+- ✅ Step 1: agent + tools, `pe do`, `pe edit`/`pe undo`
+- ✅ Step 2: persistent chat sessions + auto-compact, `pe assign` via the KV queue
+- ✅ Step 3: single-file `.exe` packaging with Node SEA
+- ✅ v0.4–v0.10: connect codes, self-update, backup/restore, model fallback chain, Cline rules sync, web search, lessons learned, self-healing agent, full config manager in the CLI, Vietnamese UI with full diacritics

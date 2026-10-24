@@ -20,7 +20,7 @@ export function estimateTokens(messages) {
   return Math.ceil(chars / 4);
 }
 
-const SUMMARY_SYSTEM = 'Ban tom tat cuoc hoi thoai coding thanh van ban ngan gon nhung giu du: muc tieu, cac quyet dinh, file da sua va noi dung sua, loi da gap, viec con do dang. Chi tra ve ban tom tat, khong giai thich them.';
+const SUMMARY_SYSTEM = 'Bạn tóm tắt cuộc hội thoại coding thành văn bản ngắn gọn nhưng giữ đủ: mục tiêu, các quyết định, file đã sửa và nội dung sửa, lỗi đã gặp, việc còn dở dang. Chỉ trả về bản tóm tắt, không giải thích thêm.';
 
 /**
  * Neu can thi rut gon: tra ve {messages, summary, compacted, dropped}.
@@ -35,7 +35,7 @@ export async function maybeCompact(cfg, { model, messages, summary, limit } = {}
   const keep = messages.slice(-KEEP_RECENT);
   const old = messages.slice(0, -KEEP_RECENT);
   const transcript = old
-    .map((m) => `${m.role === 'user' ? 'NGUOI DUNG' : 'PE'}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
+    .map((m) => `${m.role === 'user' ? 'NGƯỜI DÙNG' : 'PE'}: ${typeof m.content === 'string' ? m.content : JSON.stringify(m.content)}`)
     .join('\n')
     .slice(0, 60000);
   try {
@@ -45,7 +45,7 @@ export async function maybeCompact(cfg, { model, messages, summary, limit } = {}
         { role: 'system', content: SUMMARY_SYSTEM },
         {
           role: 'user',
-          content: (summary ? `Ban tom tat truoc:\n${summary.text}\n\n` : '') + `Doan hoi thoai can tom tat${summary ? ' (gop voi ban truoc)' : ''}:\n${transcript}`,
+          content: (summary ? `Bản tóm tắt trước:\n${summary.text}\n\n` : '') + `Đoạn hội thoại cần tóm tắt${summary ? ' (gộp với bản trước)' : ''}:\n${transcript}`,
         },
       ],
     });
@@ -63,5 +63,5 @@ export async function maybeCompact(cfg, { model, messages, summary, limit } = {}
 /** Chen ban tom tat vao danh sach message gui cho model. */
 export function withSummary(systemText, summary) {
   if (!summary?.text) return systemText;
-  return `${systemText}\n\nTom tat phan hoi thoai truoc (${summary.count} tin):\n${summary.text}`;
+  return `${systemText}\n\nTóm tắt phần hội thoại trước (${summary.count} tin):\n${summary.text}`;
 }

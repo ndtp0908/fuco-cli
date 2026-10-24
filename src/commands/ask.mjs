@@ -79,7 +79,7 @@ export async function runAsk(args) {
     stdinText = '';
   }
   if (!prompt && !files.length && !images.length) {
-    console.error('Dung: pe ask "cau hoi..." [--model <id>] [--system "..."] [--file <path>] [--image <path>] [--web]');
+    console.error('Dùng: pe ask "câu hỏi..." [--model <id>] [--system "..."] [--file <path>] [--image <path>] [--web]');
     process.exitCode = 2;
     return;
   }
@@ -88,7 +88,7 @@ export async function runAsk(args) {
   const cfg = await loadConfig();
   const miss = missingFields(cfg);
   if (miss.length) {
-    console.error(`Thieu cau hinh: ${miss.join(', ')}. Chay \`pe init\` truoc.`);
+    console.error(`Thiếu cấu hình: ${miss.join(', ')}. Chạy \`pe init\` trước.`);
     process.exitCode = 1;
     return;
   }
@@ -102,20 +102,20 @@ export async function runAsk(args) {
       stdinText,
     });
   } catch (e) {
-    console.error(`Loi dinh kem: ${e.message}`);
+    console.error(`Lỗi đính kèm: ${e.message}`);
     process.exitCode = 2;
     return;
   }
-  for (const n of att.notes) console.error(`Luu y: ${n}`);
+  for (const n of att.notes) console.error(`Lưu ý: ${n}`);
   const desc = describeAttachments(att);
-  if (desc) console.error(desc.replace('Da gui kem', 'Dinh kem'));
+  if (desc) console.error(desc.replace('Đã gửi kèm', 'Đính kèm'));
 
   const ctx = await loadContextWithLessons();
   const messages = [];
   const sysParts = [];
   if (system) sysParts.push(system);
   sysParts.push(currentTimeLine());
-  if (ctx) sysParts.push('Ngu canh project:\n' + ctx.text);
+  if (ctx) sysParts.push('Ngữ cảnh project:\n' + ctx.text);
   if (sysParts.length) messages.push({ role: 'system', content: sysParts.join('\n\n') });
   messages.push({ role: 'user', content: buildUserContent(prompt, att) });
 
@@ -127,11 +127,11 @@ export async function runAsk(args) {
       onToken: (t) => process.stdout.write(t),
     });
     process.stdout.write('\n');
-    if (r?.fellBack) console.error(`(Model chinh bi nghen — da chuyen sang model du phong: ${r.model})`);
+    if (r?.fellBack) console.error(`(Model chính bị nghẽn — đã chuyển sang model dự phòng: ${r.model})`);
   } catch (e) {
-    console.error(`Loi: ${e.message}`);
+    console.error(`Lỗi: ${e.message}`);
     if (att.images.length && /support image input/i.test(e.message)) {
-      console.error('Goi y: model dang dung khong nhan anh. Hay chon model vision :free, vi du: pe ask "..." --image <path> --model nvidia/nemotron-3.5-super-vl:free');
+      console.error('Gợi ý: model đang dùng không nhận ảnh. Hãy chọn model vision :free, ví dụ: pe ask "..." --image <path> --model nvidia/nemotron-3.5-super-vl:free');
     }
     process.exitCode = 1;
   }

@@ -10,13 +10,13 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'read_file',
-      description: 'Doc noi dung file text trong project, theo doan (toi da 400 dong/lan doc; cuoi ket qua co ghi start de doc tiep doan sau).',
+      description: 'Đọc nội dung file text trong project, theo đoạn (tối đa 400 dòng/lần đọc; cuối kết quả có ghi start để đọc tiếp đoạn sau).',
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: 'Duong dan tuong doi trong project' },
-          start: { type: 'number', description: 'Dong bat dau (mac dinh 1)' },
-          end: { type: 'number', description: 'Dong ket thuc' },
+          path: { type: 'string', description: 'Đường dẫn tương đối trong project' },
+          start: { type: 'number', description: 'Dòng bắt đầu (mặc định 1)' },
+          end: { type: 'number', description: 'Dòng kết thúc' },
         },
         required: ['path'],
       },
@@ -26,12 +26,12 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'write_file',
-      description: 'Ghi (tao moi hoac ghi de) 1 file trong project. File cu se duoc backup truoc.',
+      description: 'Ghi (tạo mới hoặc ghi đè) 1 file trong project. File cũ sẽ được backup trước.',
       parameters: {
         type: 'object',
         properties: {
           path: { type: 'string' },
-          content: { type: 'string', description: 'Toan bo noi dung moi cua file' },
+          content: { type: 'string', description: 'Toàn bộ nội dung mới của file' },
         },
         required: ['path', 'content'],
       },
@@ -41,7 +41,7 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'edit_file',
-      description: 'Sua 1 doan trong file: thay old_text (phai xuat hien dung 1 lan) bang new_text.',
+      description: 'Sửa 1 đoạn trong file: thay old_text (phải xuất hiện đúng 1 lần) bằng new_text.',
       parameters: {
         type: 'object',
         properties: {
@@ -57,11 +57,11 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'list_files',
-      description: 'Liet ke file trong project theo mau glob don gian (vd src/**/*.cs).',
+      description: 'Liệt kê file trong project theo mẫu glob đơn giản (vd src/**/*.cs).',
       parameters: {
         type: 'object',
         properties: {
-          pattern: { type: 'string', description: 'Mau glob, mac dinh **/*' },
+          pattern: { type: 'string', description: 'Mẫu glob, mặc định **/*' },
         },
       },
     },
@@ -70,12 +70,12 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'grep',
-      description: 'Tim chu bieu thuc chinh quy trong cac file text cua project.',
+      description: 'Tìm chuỗi biểu thức chính quy trong các file text của project.',
       parameters: {
         type: 'object',
         properties: {
           pattern: { type: 'string' },
-          path: { type: 'string', description: 'Thu muc con de tim, mac dinh ca project' },
+          path: { type: 'string', description: 'Thư mục con để tìm, mặc định cả project' },
         },
         required: ['pattern'],
       },
@@ -85,7 +85,7 @@ export const TOOL_DEFS = [
     type: 'function',
     function: {
       name: 'run_bash',
-      description: 'Chay 1 lenh shell trong thu muc project (timeout 60s). Dung de build/test/git.',
+      description: 'Chạy 1 lệnh shell trong thư mục project (timeout 60s). Dùng để build/test/git.',
       parameters: {
         type: 'object',
         properties: {
@@ -129,12 +129,12 @@ const CATASTROPHIC = /(rm\s+-rf\s+\/(?!\w)|rm\s+-rf\s+~|rm\s+-rf\s+\*|mkfs|forma
 
 export function describeToolCall(name, args) {
   switch (name) {
-    case 'read_file': return `doc file ${args.path}`;
-    case 'write_file': return `ghi file ${args.path} (${String(args.content || '').length} ky tu)`;
-    case 'edit_file': return `sua file ${args.path}`;
-    case 'list_files': return `liet ke file ${args.pattern || '**/*'}`;
-    case 'grep': return `tim "${args.pattern}"`;
-    case 'run_bash': return `chay lenh: ${args.command}`;
+    case 'read_file': return `đọc file ${args.path}`;
+    case 'write_file': return `ghi file ${args.path} (${String(args.content || '').length} ký tự)`;
+    case 'edit_file': return `sửa file ${args.path}`;
+    case 'list_files': return `liệt kê file ${args.pattern || '**/*'}`;
+    case 'grep': return `tìm "${args.pattern}"`;
+    case 'run_bash': return `chạy lệnh: ${args.command}`;
     default: return name;
   }
 }
@@ -210,7 +210,7 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
       const lines = raw.split('\n');
       const total = lines.length;
       const start = Math.max(1, Number(args.start) || 1);
-      if (start > total) return `File ${args.path} chi co ${total} dong — khong co dong ${start}.`;
+      if (start > total) return `File ${args.path} chỉ có ${total} dòng — không có dòng ${start}.`;
       let wantEnd = Number(args.end) || Math.min(total, start + READ_MAX_LINES - 1);
       wantEnd = Math.min(total, Math.max(start, wantEnd));
       // Cat tai bien dong theo tran ky tu (1 dong dai bat thuong thi cat
@@ -219,15 +219,15 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
       let chars = 0;
       for (let i = start - 1; i < wantEnd; i++) {
         let line = lines[i];
-        if (line.length > READ_MAX_CHARS) line = line.slice(0, READ_MAX_CHARS) + ' ...(dong qua dai, da cat)';
+        if (line.length > READ_MAX_CHARS) line = line.slice(0, READ_MAX_CHARS) + ' ...(dòng quá dài, đã cắt)';
         if (picked.length && chars + line.length + 1 > READ_MAX_CHARS) break;
         picked.push(line);
         chars += line.length + 1;
       }
       const last = start + picked.length - 1;
-      let out = `File ${args.path} (${total} dong), dong ${start}-${last}:\n` + picked.map((l, i) => `${start + i}: ${l}`).join('\n');
+      let out = `File ${args.path} (${total} dòng), dòng ${start}-${last}:\n` + picked.map((l, i) => `${start + i}: ${l}`).join('\n');
       if (last < total) {
-        out += `\n... Con ${total - last} dong chua doc. Doc tiep: read_file {"path": "${args.path}", "start": ${last + 1}}`;
+        out += `\n... Còn ${total - last} dòng chưa đọc. Đọc tiếp: read_file {"path": "${args.path}", "start": ${last + 1}}`;
       }
       return out;
     },
@@ -236,32 +236,32 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
       await backupFile(abs, home);
       await fs.mkdir(path.dirname(abs), { recursive: true });
       await fs.writeFile(abs, String(args.content ?? ''), 'utf8');
-      return `Da ghi ${args.path} (${String(args.content ?? '').length} ky tu). File cu (neu co) da backup — pe undo de khoi phuc.`;
+      return `Đã ghi ${args.path} (${String(args.content ?? '').length} ký tự). File cũ (nếu có) đã backup — pe undo để khôi phục.`;
     },
     async edit_file(args) {
       const abs = resolveInside(args.path);
       const raw = await fs.readFile(abs, 'utf8');
       const oldText = String(args.old_text ?? '');
       const count = oldText ? raw.split(oldText).length - 1 : 0;
-      if (count === 0) return 'LOI: khong tim thay doan old_text trong file. Hay doc lai file de lay dung noi dung.';
-      if (count > 1) return `LOI: old_text xuat hien ${count} lan — can doan dai hon de xac dinh duy nhat.`;
+      if (count === 0) return 'LOI: không tìm thấy đoạn old_text trong file. Hãy đọc lại file để lấy đúng nội dung.';
+      if (count > 1) return `LOI: old_text xuất hiện ${count} lần — cần đoạn dài hơn để xác định duy nhất.`;
       await backupFile(abs, home);
       await fs.writeFile(abs, raw.replace(oldText, String(args.new_text ?? '')), 'utf8');
-      return `Da sua ${args.path}. File cu da backup — pe undo de khoi phuc.`;
+      return `Đã sửa ${args.path}. File cũ đã backup — pe undo để khôi phục.`;
     },
     async list_files(args) {
       const all = [];
       await walk(base, all, 0);
       const re = globToRegex(String(args.pattern || '**/*').replace(/\\/g, '/'));
       const rel = all.map((f) => path.relative(base, f).replace(/\\/g, '/')).filter((r) => re.test(r));
-      return cap(rel.length ? `${rel.length} file:\n` + rel.slice(0, 300).join('\n') : 'Khong co file nao khop mau.');
+      return cap(rel.length ? `${rel.length} file:\n` + rel.slice(0, 300).join('\n') : 'Không có file nào khớp mẫu.');
     },
     async grep(args) {
       const sub = args.path ? resolveInside(args.path) : base;
       const all = [];
       await walk(sub, all, 0);
       let re;
-      try { re = new RegExp(normalizeGrepPattern(args.pattern), 'i'); } catch { return 'LOI: pattern khong phai regex hop le.'; }
+      try { re = new RegExp(normalizeGrepPattern(args.pattern), 'i'); } catch { return 'LOI: pattern không phải regex hợp lệ.'; }
       const hits = [];
       for (const f of all) {
         if (hits.length >= 100) break;
@@ -276,7 +276,7 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
           if (hits.length < 100 && re.test(line)) hits.push(`${rel}:${i + 1}: ${line.trim().slice(0, 200)}`);
         });
       }
-      return cap(hits.length ? hits.join('\n') : 'Khong tim thay ket qua nao.');
+      return cap(hits.length ? hits.join('\n') : 'Không tìm thấy kết quả nào.');
     },
     async run_bash(args) {
       const cmd = String(args.command || '');
@@ -285,19 +285,19 @@ export function createToolRunner({ root, approval = 2, confirm, home } = {}) {
           resolve({ code: err ? (err.code ?? 1) : 0, stdout: String(stdout || ''), stderr: String(stderr || ''), killed: !!err?.killed });
         });
       });
-      return cap(`Lenh: ${cmd}\nExit: ${out.code}${out.killed ? ' (qua 60s bi dung)' : ''}\n--- stdout ---\n${out.stdout}\n--- stderr ---\n${out.stderr}`);
+      return cap(`Lệnh: ${cmd}\nExit: ${out.code}${out.killed ? ' (quá 60s bị dừng)' : ''}\n--- stdout ---\n${out.stdout}\n--- stderr ---\n${out.stderr}`);
     },
   };
 
   /** Chay 1 tool, tra ve chuoi ket qua cho model. Khong bao gio nem loi ra ngoai. */
   async function run(name, args = {}) {
-    if (!impl[name]) return `LOI: tool "${name}" khong ton tai.`;
+    if (!impl[name]) return `LOI: tool "${name}" không tồn tại.`;
     try {
       const policy = await needApproval(name, args);
-      if (policy === 'deny') return 'LOI: lenh nay bi chan vi nguy hiem (pha hoai he thong). Khong thuc hien.';
+      if (policy === 'deny') return 'LOI: lệnh này bị chặn vì nguy hiểm (phá hoại hệ thống). Không thực hiện.';
       if (policy === 'ask') {
         const ok = confirm ? await confirm(describeToolCall(name, args)) : false;
-        if (!ok) return 'Nguoi dung TU CHOI thao tac nay. Hay hoi lai hoac tim cach khac.';
+        if (!ok) return 'Người dùng TỪ CHỐI thao tác này. Hãy hỏi lại hoặc tìm cách khác.';
       }
       return await impl[name](args);
     } catch (e) {

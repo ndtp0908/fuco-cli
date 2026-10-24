@@ -46,51 +46,51 @@ export async function runInit(args = []) {
 
   const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
   try {
-    console.log('— pe init: cau hinh ket noi toi fuco-agent worker —\n');
+    console.log('— pe init: cấu hình kết nối tới fuco-agent worker —\n');
     const cur = await loadConfig();
-    const workerUrl = normalizeUrl(await ask(rl, 'Worker URL (vi du https://xxx.workers.dev)', cur.workerUrl || ''));
+    const workerUrl = normalizeUrl(await ask(rl, 'Worker URL (ví dụ https://xxx.workers.dev)', cur.workerUrl || ''));
     rl.close();
     if (!workerUrl) {
-      console.error('Huy: thieu worker URL.');
+      console.error('Huỷ: thiếu worker URL.');
       process.exitCode = 2;
       return;
     }
-    const proxySecret = await askHidden('Proxy secret (MY_SECRET tren worker)');
+    const proxySecret = await askHidden('Proxy secret (MY_SECRET trên worker)');
     if (!proxySecret) {
-      console.error('Huy: thieu proxy secret.');
+      console.error('Huỷ: thiếu proxy secret.');
       process.exitCode = 2;
       return;
     }
     const rl2 = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const model = await ask(rl2, 'Model mac dinh (phai la model :free)', cur.model || DEFAULT_MODEL);
+    const model = await ask(rl2, 'Model mặc định (phải là model :free)', cur.model || DEFAULT_MODEL);
     rl2.close();
 
     const p = await saveConfig({ workerUrl, proxySecret, model }, undefined);
-    console.log(`\nDa luu cau hinh vao ${p} (quyen 600, chi ban doc duoc).`);
+    console.log(`\nĐã lưu cấu hình vào ${p} (quyền 600, chỉ bạn đọc được).`);
 
     // Thu ket noi ngay de biet dung/sai lien.
-    process.stdout.write('Dang thu ket noi toi worker... ');
+    process.stdout.write('Đang thử kết nối tới worker... ');
     try {
       const data = await apiFetch({ workerUrl, proxySecret, model }, '/api/models', { timeoutMs: 20000 });
       const n = Array.isArray(data?.data) ? data.data.length : 0;
-      console.log(`OK — worker tra loi, thay ${n} model.`);
+      console.log(`OK — worker trả lời, thấy ${n} model.`);
     } catch (e) {
-      console.log(`CHUA DUOC: ${e.message}`);
-      console.log('Kiem tra lai URL/secret roi chay `pe doctor` de chan doan chi tiet.');
+      console.log(`CHƯA ĐƯỢC: ${e.message}`);
+      console.log('Kiểm tra lại URL/secret rồi chạy `pe doctor` để chẩn đoán chi tiết.');
     }
-    console.log('\nXong! Thu ngay:  pe ask "xin chao"');
+    console.log('\nXong! Thử ngay:  pe ask "xin chào"');
   } catch (e) {
     try { rl.close(); } catch {}
     throw e;
   }
 }
 
-const CONTEXT_TEMPLATE = `# Ngu canh project
+const CONTEXT_TEMPLATE = `# Ngữ cảnh project
 
-Viet o day nhung dieu pe can biet ve project nay: muc dich, stack cong nghe,
-quy uoc code, lenh build/test, thu muc quan trong, dieu can tranh...
-Pe se tu nap file nay vao moi cau hoi khi ban dung pe trong thu muc project
-(hoac thu muc con cua no).
+Viết ở đây những điều pé cần biết về project này: mục đích, stack công nghệ,
+quy ước code, lệnh build/test, thư mục quan trọng, điều cần tránh...
+Pé sẽ tự nạp file này vào mọi câu hỏi khi bạn dùng pé trong thư mục project
+(hoặc thư mục con của nó).
 `;
 
 /** `pe init --project` — tao .pe/config.json + .pe/context.md ngay tai project hien tai. */
@@ -103,35 +103,35 @@ async function runProjectInit() {
   try { await fsp.stat(cfgPath); existed = true; } catch { /* chua co */ }
   if (!existed) {
     await fsp.writeFile(cfgPath, JSON.stringify({ model: cfg.model, approval: cfg.approval }, null, 2) + '\n', 'utf8');
-    console.log(`Da tao ${cfgPath} (model: ${cfg.model}, muc duyet: ${cfg.approval})`);
+    console.log(`Đã tạo ${cfgPath} (model: ${cfg.model}, mức duyệt: ${cfg.approval})`);
   } else {
-    console.log(`Da co san ${cfgPath} — giu nguyen.`);
+    console.log(`Đã có sẵn ${cfgPath} — giữ nguyên.`);
   }
   const ctxPath = path.join(dir, 'context.md');
   try {
     await fsp.stat(ctxPath);
-    console.log(`Da co san ${ctxPath} — giu nguyen.`);
+    console.log(`Đã có sẵn ${ctxPath} — giữ nguyên.`);
   } catch {
     await fsp.writeFile(ctxPath, CONTEXT_TEMPLATE, 'utf8');
-    console.log(`Da tao ${ctxPath} — mo ra va viet ngu canh project vao do.`);
+    console.log(`Đã tạo ${ctxPath} — mở ra và viết ngữ cảnh project vào đó.`);
   }
-  console.log('\nTu gio dung pe o thu muc nay (hoac thu muc con) se tu ap dung cau hinh + ngu canh tren.');
+  console.log('\nTừ giờ dùng pé ở thư mục này (hoặc thư mục con) sẽ tự áp dụng cấu hình + ngữ cảnh trên.');
 }
 
 
 /** `pe init --code <PE1...>` — nhap cau hinh tu ma ket noi (Goi A1). */
 async function runImportCode(code) {
   if (!code) {
-    console.error('Thieu ma ket noi. Dung: pe init --code <PE1...>');
+    console.error('Thiếu mã kết nối. Dùng: pe init --code <PE1...>');
     process.exitCode = 2;
     return;
   }
-  const password = process.env.PE_CONNECT_PASSWORD || (await askHidden('Mat khau cua ma ket noi'));
+  const password = process.env.PE_CONNECT_PASSWORD || (await askHidden('Mật khẩu của mã kết nối'));
   let data;
   try {
     data = decodeConnectCode(code, password);
   } catch (e) {
-    console.error(`Khong giai ma duoc: ${e.message}`);
+    console.error(`Không giải mã được: ${e.message}`);
     process.exitCode = 1;
     return;
   }
@@ -142,13 +142,13 @@ async function runImportCode(code) {
     model: data.model || DEFAULT_MODEL,
     approval: [1, 2, 3].includes(Number(data.approval)) ? Number(data.approval) : 2,
   });
-  console.log(`Da nhap cau hinh tu ma ket noi vao ${p} (worker: ${data.workerUrl}, model: ${data.model || DEFAULT_MODEL}).`);
-  process.stdout.write('Dang thu ket noi toi worker... ');
+  console.log(`Đã nhập cấu hình từ mã kết nối vào ${p} (worker: ${data.workerUrl}, model: ${data.model || DEFAULT_MODEL}).`);
+  process.stdout.write('Đang thử kết nối tới worker... ');
   try {
     const { apiFetch } = await import('../lib/api.mjs');
     const d = await apiFetch({ workerUrl: data.workerUrl, proxySecret: data.proxySecret }, '/api/models', { timeoutMs: 20000 });
-    console.log(`OK — thay ${Array.isArray(d?.data) ? d.data.length : 0} model. Xong, dung ngay duoc!`);
+    console.log(`OK — thấy ${Array.isArray(d?.data) ? d.data.length : 0} model. Xong, dùng ngay được!`);
   } catch (e) {
-    console.log(`CHUA DUOC: ${e.message}`);
+    console.log(`CHƯA ĐƯỢC: ${e.message}`);
   }
 }

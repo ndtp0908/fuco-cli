@@ -1,1 +1,7 @@
-{"exeUrl":"https://drive.google.com/uc?export=download&id=1A135KQSB8sXbH9MlY0yj8EfXoN_i_786","notes":"v0.9.0: goi TU CHUA — (1) agent dinh ket thuc ma van con loi tool chua xu ly thi pe khong cho ket thuc, tu them 1 luot yeu cau sua tiep (ap dung ca pe do lan pe chat); (2) pe edit thu lai 1 lan khi model tra sai dinh dang/chua sua gi, mom lai loi cu the; (3) pe do --verify \"<lenh>\" lam xong tu chay lenh kiem chung (build/test), FAIL thi dua loi ve cho agent sua tiep toi da 2 vong, van fail thi exit 1.","sha256":"ed90b95a2638d3df9849a83aeb31f0abf40c0e3b45a014367c95dbee7e4e1713","size":94187008,"version":"0.9.0"}
+{
+ "version": "0.10.0",
+ "exeUrl": "https://drive.google.com/uc?export=download&id=1xDEMGoCb6jHSUmfQW8PAwUMFPfaLwe4N",
+ "sha256": "1e3198cea7f330f65375a073ff5508fe91bbce3563f86a1438af75c1136fda41",
+ "size": 94218752,
+ "notes": "v0.10.0: (1) pe config — quản lý toàn bộ cấu hình ngay trong CLI (xem tổng quan + nguồn từng khoá, get/set kể cả theo project, edit mở đúng file config/context/lessons/rules, path); (2) pe sessions rm <id> — xoá phiên chat theo id; (3) toàn bộ text hiển thị chuyển sang tiếng Việt có dấu (giữ nguyên các token giao thức nội bộ); (4) README tiếng Anh. Repo fuco-cli đã public nên từ bản này pe update tải manifest thật được."
+}

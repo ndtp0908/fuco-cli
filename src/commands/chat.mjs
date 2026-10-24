@@ -15,25 +15,25 @@ import { maybeCompact, withSummary } from '../lib/compact.mjs';
 import { currentTimeLine } from '../lib/now.mjs';
 import path from 'node:path';
 
-const BASE_SYSTEM = 'Ban la pe — tro ly cua nguoi dung trong ung dung fuco-agent, gio dang noi chuyen qua CLI. Tra loi ngan gon, dung trong tam. Nguoi dung la coder (.NET/Angular).';
+const BASE_SYSTEM = 'Bạn là pé — trợ lý của người dùng trong ứng dụng fuco-agent, giờ đang nói chuyện qua CLI. Trả lời ngắn gọn, đúng trọng tâm. Người dùng là coder (.NET/Angular).';
 
 const HELP = `
-Lenh trong chat:
-  /help            hien tro giup nay
-  /model [id]      xem / doi model (phai la :free; doi la co luu)
-  /models          liet ke model :free
-  /file <path>     dinh kem file text/code cho tin nhan TIEP THEO
-  /image <path>    dinh kem anh cho tin nhan tiep theo
-  /attach          xem dinh kem dang cho gui
-  /tools [on|off]  bat/tat che do agent (dung tools trong project)
-  /web [on|off]    bat/tat tim kiem web (worker tu tim + chen nguon vao cau tra loi)
-  /lesson <nd>     ghi tay 1 bai hoc kinh nghiem (luu ngay; tu phien sau pe tu tranh loi do)
-  /approval [1|2|3]  muc duyet tool: 1 hoi tat ca, 2 vua (mac dinh), 3 tu do
-  /undo [file]     khoi phuc file ve ban truoc khi pe sua
-  /session         xem phien chat hien tai (id, so tin)
-  /new             bat dau phien moi (phien cu van con trong ~/.pe/sessions)\n  /clear           xoa lich su doan nay + dinh kem dang cho
-  /exit            thoat (hoac Ctrl+C)
-Trong cau co the go @duong-dan de dinh kem ngay file/anh do.
+Lệnh trong chat:
+  /help            hiện trợ giúp này
+  /model [id]      xem / đổi model (phải là :free; đổi là có lưu)
+  /models          liệt kê model :free
+  /file <path>     đính kèm file text/code cho tin nhắn TIẾP THEO
+  /image <path>    đính kèm ảnh cho tin nhắn tiếp theo
+  /attach          xem đính kèm đang chờ gửi
+  /tools [on|off]  bật/tắt chế độ agent (dùng tools trong project)
+  /web [on|off]    bật/tắt tìm kiếm web (worker tự tìm + chèn nguồn vào câu trả lời)
+  /lesson <nd>     ghi tay 1 bài học kinh nghiệm (lưu ngay; từ phiên sau pé tự tránh lỗi đó)
+  /approval [1|2|3]  mức duyệt tool: 1 hỏi tất cả, 2 vừa (mặc định), 3 tự do
+  /undo [file]     khôi phục file về bản trước khi pé sửa
+  /session         xem phiên chat hiện tại (id, số tin)
+  /new             bắt đầu phiên mới (phiên cũ vẫn còn trong ~/.pe/sessions)\n  /clear           xoá lịch sử đoạn này + đính kèm đang chờ
+  /exit            thoát (hoặc Ctrl+C)
+Trong câu có thể gõ @đường-dẫn để đính kèm ngay file/ảnh đó.
 `;
 
 export async function runChat(args = [], input = process.stdin, output = process.stdout) {
@@ -41,7 +41,7 @@ export async function runChat(args = [], input = process.stdin, output = process
   const cfg = await loadConfig();
   const miss = missingFields(cfg);
   if (miss.length) {
-    console.error(`Chua cau hinh du: thieu ${miss.join(', ')}. Chay \`pe init\` truoc.`);
+    console.error(`Chưa cấu hình đủ: thiếu ${miss.join(', ')}. Chạy \`pe init\` trước.`);
     process.exitCode = 2;
     return;
   }
@@ -57,7 +57,7 @@ export async function runChat(args = [], input = process.stdin, output = process
   if (args[0] === '--resume') {
     session = args[1] ? await loadSession(args[1]) : await latestSession();
     if (!session) {
-      console.error(args[1] ? `Khong tim thay phien ${args[1]}.` : 'Chua co phien chat nao de mo lai.');
+      console.error(args[1] ? `Không tìm thấy phiên ${args[1]}.` : 'Chưa có phiên chat nào để mở lại.');
       process.exitCode = 2;
       return;
     }
@@ -90,22 +90,22 @@ export async function runChat(args = [], input = process.stdin, output = process
 
   const confirm = (desc) => new Promise((resolve) => {
     if (rlClosed) {
-      console.log(`  [can duyet] ${desc} — input da dong nen mac dinh tu choi.`);
+      console.log(`  [cần duyệt] ${desc} — input đã đóng nên mặc định từ chối.`);
       resolve(false);
       return;
     }
     try {
-      rl.question(`  Cho phep ${desc}? (y/N) `, (a) => resolve(/^y(es)?$/i.test(a.trim())));
+      rl.question(`  Cho phép ${desc}? (y/N) `, (a) => resolve(/^y(es)?$/i.test(a.trim())));
     } catch {
       resolve(false);
     }
   });
 
-  console.log(`pe chat — model: ${currentModel}${webOn ? ' | web: bat' : ''}${ctx ? `\nDa nap ngu canh project: ${ctx.path}` : ''}`);
+  console.log(`pe chat — model: ${currentModel}${webOn ? ' | web: bật' : ''}${ctx ? `\nĐã nạp ngữ cảnh project: ${ctx.path}` : ''}`);
   console.log(resumed
-    ? `Da mo lai phien ${session.id} cua project nay (${history.length} tin${session.summary ? ' + ban tom tat' : ''}). Go /new neu muon phien moi.`
-    : `Phien moi: ${session.id} (tu luu, mo lai bang: pe chat --resume)`);
-  console.log('Go "/help" de xem lenh, "/exit" de thoat.\n');
+    ? `Đã mở lại phiên ${session.id} của project này (${history.length} tin${session.summary ? ' + bản tóm tắt' : ''}). Gõ /new nếu muốn phiên mới.`
+    : `Phiên mới: ${session.id} (tự lưu, mở lại bằng: pe chat --resume)`);
+  console.log('Gõ "/help" để xem lệnh, "/exit" để thoát.\n');
   safePrompt();
 
   // Ctrl+C: dang co luot chay thi ngat luot (giu chat), dang ranh thi thoat em.
@@ -119,7 +119,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     if (exiting) return;
     exiting = true;
     try { await saveSession(session); } catch { /* bo qua */ }
-    console.log('\n(Da luu phien — tam biet!)');
+    console.log('\n(Đã lưu phiên — tạm biệt!)');
     process.exit(0);
   };
   process.on('SIGINT', onSigint);
@@ -127,7 +127,7 @@ export async function runChat(args = [], input = process.stdin, output = process
   const buildSystem = () => {
     let s = withSummary(BASE_SYSTEM, session.summary);
     s += `\n\n${currentTimeLine()}`;
-    if (ctx) s += `\n\nNgu canh project:\n${ctx.text}`;
+    if (ctx) s += `\n\nNgữ cảnh project:\n${ctx.text}`;
     if (toolsOn) s += `\n\n${AGENT_SYSTEM}`;
     return s;
   };
@@ -227,24 +227,24 @@ export async function runChat(args = [], input = process.stdin, output = process
       const saveOne = async (e) => {
         const r = await saveLesson(e, e.scope);
         console.log(r.action === 'merged'
-          ? `  Da gop vao bai hoc cu (bay gio x${r.entry.count}) — ${r.file}`
-          : `  Da luu bai hoc — ${r.file}`);
+          ? `  Đã gộp vào bài học cũ (bây giờ x${r.entry.count}) — ${r.file}`
+          : `  Đã lưu bài học — ${r.file}`);
       };
       if (a === 'all' || a === 'tat ca') {
         for (const e of lessonReview.queue) await saveOne(e);
         lessonReview = null;
-        console.log('  Da luu xong cac bai hoc de xuat.');
+        console.log('  Đã lưu xong các bài học đề xuất.');
       } else if (a === 'y' || a === 'yes' || a === 'luu') {
         await saveOne(lessonReview.queue.shift());
         if (!lessonReview.queue.length) lessonReview = null;
       } else {
         lessonReview.queue.shift();
-        console.log('  (bo qua bai hoc nay)');
+        console.log('  (bỏ qua bài học này)');
         if (!lessonReview.queue.length) lessonReview = null;
       }
       if (lessonReview) {
         console.log(formatLessonForReview(lessonReview.queue[0], lessonReview.total - lessonReview.queue.length, lessonReview.total));
-        console.log('  Go "y" de luu, "n" de bo qua, "all" de luu tat ca:');
+        console.log('  Gõ "y" để lưu, "n" để bỏ qua, "all" để lưu tất cả:');
       }
       safePrompt(); continue;
     }
@@ -255,11 +255,11 @@ export async function runChat(args = [], input = process.stdin, output = process
       session = await createSession({ cwd: process.cwd(), model: currentModel });
       history = session.messages;
       agentSeen.clear();
-      console.log(`Phien moi: ${session.id}`);
+      console.log(`Phiên mới: ${session.id}`);
       safePrompt(); continue;
     }
     if (line === '/session') {
-      console.log(`Phien ${session.id} — ${history.length} tin${session.summary ? `, da tom tat ${session.summary.count} tin cu` : ''}, luu tai ~/.pe/sessions/${session.id}.json`);
+      console.log(`Phiên ${session.id} — ${history.length} tin${session.summary ? `, đã tóm tắt ${session.summary.count} tin cũ` : ''}, lưu tại ~/.pe/sessions/${session.id}.json`);
       safePrompt(); continue;
     }
     if (line === '/clear') {
@@ -268,23 +268,23 @@ export async function runChat(args = [], input = process.stdin, output = process
       agentSeen.clear();
       staged = { files: [], images: [] };
       await saveSession(session);
-      console.log('(da xoa lich su doan nay va dinh kem dang cho)');
+      console.log('(đã xoá lịch sử đoạn này và đính kèm đang chờ)');
       safePrompt(); continue;
     }
     if (line.startsWith('/model')) {
       const id = line.slice(6).trim();
       if (!id) {
-        console.log(`Model dang dung: ${currentModel}`);
+        console.log(`Model đang dùng: ${currentModel}`);
       } else if (!id.endsWith(':free')) {
-        console.log('Model phai ket thuc bang ":free" (worker chan model khac).');
+        console.log('Model phải kết thúc bằng ":free" (worker chặn model khác).');
       } else {
         currentModel = id;
         try {
           const fresh = await loadConfig();
           await saveConfig({ workerUrl: fresh.workerUrl, peWorkerUrl: fresh.peWorkerUrl, proxySecret: fresh.proxySecret, model: id, approval: fresh.approval });
-          console.log(`Da doi model: ${id} (da luu)`);
+          console.log(`Đã đổi model: ${id} (đã lưu)`);
         } catch {
-          console.log(`Da doi model cho phien nay: ${id} (luu that bai)`);
+          console.log(`Đã đổi model cho phiên này: ${id} (lưu thất bại)`);
         }
       }
       safePrompt(); continue;
@@ -292,7 +292,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     if (line === '/models') {
       try {
         const ids = freeOnly(await listModels(cfg));
-        console.log(ids.map((x) => `  ${x}`).join('\n') || '(khong co model :free)');
+        console.log(ids.map((x) => `  ${x}`).join('\n') || '(không có model :free)');
       } catch (e) { console.log(`Loi: ${e.message}`); }
       safePrompt(); continue;
     }
@@ -300,32 +300,32 @@ export async function runChat(args = [], input = process.stdin, output = process
       const v = line.slice(6).trim();
       if (v === 'on') toolsOn = true;
       else if (v === 'off') toolsOn = false;
-      console.log(`Che do agent (tools): ${toolsOn ? 'BAT' : 'TAT'}`);
+      console.log(`Chế độ agent (tools): ${toolsOn ? 'BẬT' : 'TẮT'}`);
       safePrompt(); continue;
     }
     if (line.startsWith('/web')) {
       const v = line.slice(4).trim();
       if (v === 'on') webOn = true;
       else if (v === 'off') webOn = false;
-      console.log(`Tim kiem web: ${webOn ? 'BAT (worker tu tim + chen nguon)' : 'TAT'}`);
+      console.log(`Tìm kiếm web: ${webOn ? 'BẬT (worker tự tìm + chèn nguồn)' : 'TẮT'}`);
       safePrompt(); continue;
     }
     if (line.startsWith('/lesson')) {
       const text = line.slice('/lesson'.length).trim();
       if (!text) {
-        console.log('Dung: /lesson <noi dung bai hoc> — ghi tay 1 bai hoc (luu ngay). Xem tat ca bai hoc: thoat chat roi chay `pe lessons`.');
+        console.log('Dùng: /lesson <nội dung bài học> — ghi tay 1 bài học (lưu ngay). Xem tất cả bài học: thoát chat rồi chạy `pe lessons`.');
       } else {
-        const r = await saveLesson({ loi: 'Bai hoc ghi tay', gocRe: '', lanSau: text, tag: 'manual' }, 'project');
+        const r = await saveLesson({ loi: 'Bài học ghi tay', gocRe: '', lanSau: text, tag: 'manual' }, 'project');
         console.log(r.action === 'merged'
-          ? `Da gop vao bai hoc tuong tu (bay gio x${r.entry.count}) — ${r.file}`
-          : `Da luu bai hoc — ${r.file}`);
+          ? `Đã gộp vào bài học tương tự (bây giờ x${r.entry.count}) — ${r.file}`
+          : `Đã lưu bài học — ${r.file}`);
       }
       safePrompt(); continue;
     }
     if (line.startsWith('/approval')) {
       const v = Number(line.slice(9).trim());
       if ([1, 2, 3].includes(v)) approval = v;
-      console.log(`Muc duyet tool: ${approval} (1 hoi tat ca, 2 vua, 3 tu do)`);
+      console.log(`Mức duyệt tool: ${approval} (1 hỏi tất cả, 2 vừa, 3 tự do)`);
       safePrompt(); continue;
     }
     if (line.startsWith('/undo')) {
@@ -336,30 +336,30 @@ export async function runChat(args = [], input = process.stdin, output = process
           const latest = await latestBackup();
           target = latest ? latest.file : null;
         }
-        if (!target) console.log('Chua co ban backup nao.');
+        if (!target) console.log('Chưa có bản backup nào.');
         else {
           const entry = await restoreLatest(target);
-          console.log(entry ? `Da khoi phuc ${target} ve ban ${new Date(entry.at).toLocaleString('vi-VN')}.` : `Khong co backup cho ${target}.`);
+          console.log(entry ? `Đã khôi phục ${target} về bản ${new Date(entry.at).toLocaleString('vi-VN')}.` : `Không có backup cho ${target}.`);
         }
-      } catch (e) { console.log(`Loi undo: ${e.message}`); }
+      } catch (e) { console.log(`Lỗi undo: ${e.message}`); }
       safePrompt(); continue;
     }
     if (line.startsWith('/file') || line.startsWith('/image')) {
       const isImage = line.startsWith('/image');
       const p = line.slice(isImage ? 6 : 5).trim().replace(/^"(.*)"$/, '$1');
       if (!p) {
-        console.log(`Dung: ${isImage ? '/image' : '/file'} <duong-dan>`);
+        console.log(`Dùng: ${isImage ? '/image' : '/file'} <đường-dẫn>`);
       } else if (!fs.existsSync(p)) {
-        console.log(`Khong tim thay file: ${p}`);
+        console.log(`Không tìm thấy file: ${p}`);
       } else {
         (isImage ? staged.images : staged.files).push(p);
-        console.log(`[Da gan ${isImage ? 'anh' : 'file'} ${p} cho tin nhan tiep theo — /attach de xem]`);
+        console.log(`[Đã gắn ${isImage ? 'ảnh' : 'file'} ${p} cho tin nhắn tiếp theo — /attach để xem]`);
       }
       safePrompt(); continue;
     }
     if (line === '/attach') {
-      if (!staged.files.length && !staged.images.length) console.log('(khong co dinh kem dang cho)');
-      else console.log(`Dang cho gui: ${[...staged.files.map((f) => 'file ' + f), ...staged.images.map((f) => 'anh ' + f)].join(', ')}`);
+      if (!staged.files.length && !staged.images.length) console.log('(không có đính kèm đang chờ)');
+      else console.log(`Đang chờ gửi: ${[...staged.files.map((f) => 'file ' + f), ...staged.images.map((f) => 'ảnh ' + f)].join(', ')}`);
       safePrompt(); continue;
     }
 
@@ -370,7 +370,7 @@ export async function runChat(args = [], input = process.stdin, output = process
         history = c.messages;
         session.messages = history;
         session.summary = c.summary;
-        console.log(`[Da rut gon ngu canh: tom tat ${c.dropped} tin cu, giu ${history.length} tin gan nhat]`);
+        console.log(`[Đã rút gọn ngữ cảnh: tóm tắt ${c.dropped} tin cũ, giữ ${history.length} tin gần nhất]`);
       }
     } catch { /* loi compact khong chan chat */ }
 
@@ -383,10 +383,10 @@ export async function runChat(args = [], input = process.stdin, output = process
         images: [...staged.images, ...mentions.images],
       });
     } catch (e) {
-      console.log(`Loi dinh kem: ${e.message}`);
+      console.log(`Lỗi đính kèm: ${e.message}`);
       safePrompt(); continue;
     }
-    for (const n of att.notes) console.log(`Luu y: ${n}`);
+    for (const n of att.notes) console.log(`Lưu ý: ${n}`);
     const content = buildUserContent(line, att);
     const shadow = line + (describeAttachments(att) ? `\n${describeAttachments(att)}` : '');
     history.push({ role: 'user', content });
@@ -405,9 +405,9 @@ export async function runChat(args = [], input = process.stdin, output = process
           const candidates = await distillLessons({ ...cfg, model: currentModel }, { task: shadow, incidents: turn.incidents, finalText: text });
           if (candidates.length) {
             lessonReview = { queue: [...candidates], total: candidates.length };
-            console.log('\nTrong luc lam viec pe co pham loi roi tu sua duoc. Bai hoc de xuat:');
+            console.log('\nTrong lúc làm việc pé có phạm lỗi rồi tự sửa được. Bài học đề xuất:');
             console.log(formatLessonForReview(candidates[0], 0, candidates.length));
-            console.log('  Go "y" de luu, "n" de bo qua, "all" de luu tat ca:');
+            console.log('  Gõ "y" để lưu, "n" để bỏ qua, "all" để lưu tất cả:');
           }
         } catch { /* rut bai hoc loi thi bo qua */ }
       }
@@ -415,11 +415,11 @@ export async function runChat(args = [], input = process.stdin, output = process
       process.stdout.write('\n');
       history[history.length - 1] = { role: 'user', content: shadow };
       if (turnAbort?.signal.aborted || e?.name === 'AbortError') {
-        console.log('(da ngat luot nay — go tiep khi san sang)');
+        console.log('(đã ngắt lượt này — gõ tiếp khi sẵn sàng)');
       } else {
-      console.log(`Loi: ${e.message}\n(cau hoi van giu trong lich su — go lai neu muon thu tiep)`);
+      console.log(`Lỗi: ${e.message}\n(câu hỏi vẫn giữ trong lịch sử — gõ lại nếu muốn thử tiếp)`);
       if (att.images.length && /support image input/i.test(e.message)) {
-        console.log('Goi y: model dang dung khong nhan anh. Doi sang model vision :free, vi du: /model nvidia/nemotron-3.5-super-vl:free');
+        console.log('Gợi ý: model đang dùng không nhận ảnh. Đổi sang model vision :free, ví dụ: /model nvidia/nemotron-3.5-super-vl:free');
       }
       }
     }
@@ -430,5 +430,5 @@ export async function runChat(args = [], input = process.stdin, output = process
   }
   process.removeListener('SIGINT', onSigint);
   rl.close();
-  console.log('Tam biet!');
+  console.log('Tạm biệt!');
 }

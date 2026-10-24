@@ -23,7 +23,7 @@ function isSea() {
 
 async function fetchJson(url) {
   const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-  if (!res.ok) throw new Error(`HTTP ${res.status} khi tai ${url}`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} khi tải ${url}`);
   return res.json();
 }
 
@@ -40,9 +40,9 @@ async function downloadTo(url, dest) {
       res = await fetch(u.toString(), { signal: AbortSignal.timeout(600000), redirect: 'follow' });
       ct = res.headers.get('content-type') || '';
     }
-    if (ct.includes('text/html')) throw new Error('Nguon tai tra ve trang HTML thay vi file — tai thu cong bang link trong manifest.');
+    if (ct.includes('text/html')) throw new Error('Nguồn tải trả về trang HTML thay vì file — tải thủ công bằng link trong manifest.');
   }
-  if (!res.ok) throw new Error(`HTTP ${res.status} khi tai file.`);
+  if (!res.ok) throw new Error(`HTTP ${res.status} khi tải file.`);
   const buf = Buffer.from(await res.arrayBuffer());
   await fs.writeFile(dest, buf);
   return buf.length;
@@ -52,47 +52,47 @@ export async function runUpdate(args = []) {
   const checkOnly = args.includes('--check');
   const cfg = await loadConfig();
   const manifestUrl = process.env.PE_UPDATE_URL || cfg.updateUrl || DEFAULT_UPDATE_URL;
-  console.log(`Ban hien tai: ${VERSION}`);
+  console.log(`Bản hiện tại: ${VERSION}`);
   let man;
   try {
     man = await fetchJson(manifestUrl);
   } catch (e) {
-    console.error(`Khong tai duoc manifest cap nhat (${e.message}).`);
-    console.error(`Nguon: ${manifestUrl}`);
+    console.error(`Không tải được manifest cập nhật (${e.message}).`);
+    console.error(`Nguồn: ${manifestUrl}`);
     process.exitCode = 1;
     return;
   }
-  console.log(`Ban moi nhat: ${man.version} (${manifestUrl})`);
+  console.log(`Bản mới nhất: ${man.version} (${manifestUrl})`);
   if (compareVersions(man.version, VERSION) <= 0) {
-    console.log('Ban dang dung la moi nhat roi.');
+    console.log('Bản đang dùng là mới nhất rồi.');
     return;
   }
-  console.log(`Co ban moi ${man.version}!`);
+  console.log(`Có bản mới ${man.version}!`);
   if (checkOnly) {
-    console.log('Chay `pe update` de cap nhat.');
+    console.log('Chạy `pe update` để cập nhật.');
     return;
   }
   if (!isSea()) {
-    console.log('Ban dang chay qua node (khong phai .exe) nen pe khong tu thay file.');
-    console.log('Cap nhat thu cong: git pull repo fuco-cli (hoac tai pe.exe moi tu Drive/GitHub).');
-    if (man.exeUrl) console.log(`Ban .exe moi: ${man.exeUrl}`);
+    console.log('Bản đang chạy qua node (không phải .exe) nên pé không tự thay file.');
+    console.log('Cập nhật thủ công: git pull repo fuco-cli (hoặc tải pe.exe mới từ Drive/GitHub).');
+    if (man.exeUrl) console.log(`Bản .exe mới: ${man.exeUrl}`);
     return;
   }
   if (!man.exeUrl || !man.sha256) {
-    console.error('Manifest thieu exeUrl/sha256 nen khong tu tai duoc.');
+    console.error('Manifest thiếu exeUrl/sha256 nên không tự tải được.');
     process.exitCode = 1;
     return;
   }
   const exePath = process.execPath;
   const tmpPath = exePath + '.new';
-  console.log(`Dang tai ban moi (~${man.size ? Math.round(man.size / 1024 / 1024) + ' MB' : '?'})...`);
+  console.log(`Đang tải bản mới (~${man.size ? Math.round(man.size / 1024 / 1024) + ' MB' : '?'})...`);
   try {
     await downloadTo(man.exeUrl, tmpPath);
     const data = await fs.readFile(tmpPath);
     const sha = createHash('sha256').update(data).digest('hex');
     if (sha.toLowerCase() !== String(man.sha256).toLowerCase()) {
       await fs.rm(tmpPath, { force: true });
-      console.error('SHA256 khong khop — file tai ve co van de, HUY cap nhat de an toan.');
+      console.error('SHA256 không khớp — file tải về có vấn đề, HUỶ cập nhật để an toàn.');
       process.exitCode = 1;
       return;
     }
@@ -101,10 +101,10 @@ export async function runUpdate(args = []) {
     await fs.rm(oldPath, { force: true }).catch(() => {});
     await fs.rename(exePath, oldPath);
     await fs.rename(tmpPath, exePath);
-    console.log(`Da cap nhat len ${man.version}. Ban cu giu tai ${oldPath} (xoa duoc sau khi chay on).`);
-    console.log('Khoi dong lai pe de dung ban moi.');
+    console.log(`Đã cập nhật lên ${man.version}. Bản cũ giữ tại ${oldPath} (xoá được sau khi chạy ổn).`);
+    console.log('Khởi động lại pé để dùng bản mới.');
   } catch (e) {
-    console.error(`Cap nhat that bai: ${e.message}`);
+    console.error(`Cập nhật thất bại: ${e.message}`);
     await fs.rm(tmpPath, { force: true }).catch(() => {});
     process.exitCode = 1;
   }

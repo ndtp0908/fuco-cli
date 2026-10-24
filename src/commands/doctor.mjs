@@ -21,31 +21,31 @@ export async function runDoctor() {
   line(major >= 18, `Node.js ${process.versions.node} (>= 18)`);
 
   // 2. Config file
-  line(cfg._meta.fileExists, `file cau hinh ${cfg._meta.path}${cfg._meta.fileExists ? '' : ' (chua co — chay `pe init`)'}`);
+  line(cfg._meta.fileExists, `file cấu hình ${cfg._meta.path}${cfg._meta.fileExists ? '' : ' (chưa có — chạy `pe init`)'}`);
 
   // 3. Cac truong bat buoc
   const miss = missingFields(cfg);
   line(miss.length === 0, miss.length === 0
-    ? `workerUrl + proxySecret da co${cfg._meta.fromEnv.workerUrl || cfg._meta.fromEnv.proxySecret ? ' (mot phan tu bien moi truong)' : ''}`
-    : `thieu: ${miss.join(', ')} — chay \`pe init\` hoac dat bien moi truong`);
+    ? `workerUrl + proxySecret đã có${cfg._meta.fromEnv.workerUrl || cfg._meta.fromEnv.proxySecret ? ' (một phần từ biến môi trường)' : ''}`
+    : `thiếu: ${miss.join(', ')} — chạy \`pe init\` hoặc đặt biến môi trường`);
 
   // 3b. Project hien tai (.pe/)
   if (cfg._meta.projectDir) {
     const ctx = await loadProjectContext();
-    line(true, `project: ${cfg._meta.projectDir}${cfg._meta.projectModel ? ` (model rieng: ${cfg._meta.projectModel})` : ''}${ctx ? ` + context.md (${ctx.text.length} ky tu)` : ''}`);
+    line(true, `project: ${cfg._meta.projectDir}${cfg._meta.projectModel ? ` (model riêng: ${cfg._meta.projectModel})` : ''}${ctx ? ` + context.md (${ctx.text.length} ký tự)` : ''}`);
   } else {
-    console.log('  - chua co .pe/ cho project nay (pe init --project de tao)');
+    console.log('  - chưa có .pe/ cho project này (pe init --project để tạo)');
   }
 
   // 4. Model hop le (worker chi cho :free)
-  line(String(cfg.model).endsWith(':free'), `model mac dinh "${cfg.model}"${String(cfg.model).endsWith(':free') ? '' : ' — worker se tu choi (403)'}`);
+  line(String(cfg.model).endsWith(':free'), `model mặc định "${cfg.model}"${String(cfg.model).endsWith(':free') ? '' : ' — worker sẽ từ chối (403)'}`);
 
   // 4b. Pe-worker (hang doi assign) — thong tin them, khong tinh fail
   try {
     const pend = await listPending(cfg);
-    console.log(`  ${OK} pe-worker (assign) noi duoc — ${pend.length} viec dang cho`);
+    console.log(`  ${OK} pe-worker (assign) nối được — ${pend.length} việc đang chờ`);
   } catch (e) {
-    console.log(`  - pe-worker (assign) chua noi duoc: ${e.message}`);
+    console.log(`  - pe-worker (assign) chưa nối được: ${e.message}`);
   }
 
   // 5. Ket noi worker + auth (chi khi du thong tin)
@@ -53,24 +53,24 @@ export async function runDoctor() {
     try {
       const data = await apiFetch(cfg, '/api/models', { timeoutMs: 20000 });
       const n = Array.isArray(data?.data) ? data.data.length : 0;
-      line(true, `worker tra loi OK (${n} model)`);
+      line(true, `worker trả lời OK (${n} model)`);
       const ids = (data.data || []).map((m) => m.id).filter(Boolean);
       line(ids.includes(cfg.model), ids.includes(cfg.model)
-        ? `model "${cfg.model}" co trong danh sach worker`
-        : `model "${cfg.model}" KHONG thay trong danh sach worker — doi bang \`pe model <id>\``);
+        ? `model "${cfg.model}" có trong danh sách worker`
+        : `model "${cfg.model}" KHÔNG thấy trong danh sách worker — đổi bằng \`pe model <id>\``);
     } catch (e) {
       if (e instanceof PeError && e.kind === 'auth') {
-        line(false, `sai proxy secret hoac sai worker URL (${e.message})`);
+        line(false, `sai proxy secret hoặc sai worker URL (${e.message})`);
       } else if (e instanceof PeError && e.kind === 'network') {
-        line(false, `khong noi duoc toi worker (${e.message})`);
+        line(false, `không nối được tới worker (${e.message})`);
       } else {
-        line(false, `worker loi: ${e.message}`);
+        line(false, `worker lỗi: ${e.message}`);
       }
     }
   } else {
-    console.log('  - bo qua kiem tra worker (thieu cau hinh)');
+    console.log('  - bỏ qua kiểm tra worker (thiếu cấu hình)');
   }
 
-  console.log(fail === 0 ? '\nTat ca deu on — dung `pe ask "xin chao"` de thu.' : `\nCo ${fail} muc can sua.`);
+  console.log(fail === 0 ? '\nTất cả đều ổn — dùng `pe ask "xin chào"` để thử.' : `\nCó ${fail} mục cần sửa.`);
   process.exitCode = fail === 0 ? 0 : 1;
 }

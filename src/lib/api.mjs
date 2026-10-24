@@ -30,8 +30,8 @@ function isFake404(res, body) {
 
 /** fetch thap: gan header auth, phan loai loi ro rang. */
 export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs = 15000, signal } = {}) {
-  if (!cfg.workerUrl) throw new PeError('config', 'Chua co workerUrl. Chay `pe init` de cau hinh.');
-  if (!cfg.proxySecret) throw new PeError('config', 'Chua co proxySecret. Chay `pe init` de cau hinh.');
+  if (!cfg.workerUrl) throw new PeError('config', 'Chưa có workerUrl. Chạy `pe init` để cấu hình.');
+  if (!cfg.proxySecret) throw new PeError('config', 'Chưa có proxySecret. Chạy `pe init` để cấu hình.');
   const url = cfg.workerUrl + apiPath;
   let res;
   try {
@@ -50,18 +50,18 @@ export async function apiFetch(cfg, apiPath, { method = 'GET', body, timeoutMs =
   const data = await readBody(res);
 
   if (isFake404(res, data)) {
-    throw new PeError('auth', 'Worker tra ve trang 404 gia — sai proxy secret HOAC sai worker URL. Chay `pe init` de nhap lai.');
+    throw new PeError('auth', 'Worker trả về trang 404 giả — sai proxy secret HOẶC sai worker URL. Chạy `pe init` để nhập lại.');
   }
   if (res.status === 403) {
     const m = data?.error?.message || data?.message || '';
     if (/only :free models/i.test(m)) {
-      throw new PeError('model', `Worker tu choi: chi cho phep model :free. ${m}`);
+      throw new PeError('model', `Worker từ chối: chỉ cho phép model :free. ${m}`);
     }
-    throw new PeError('http', `Worker tra 403. ${m}`, 403);
+    throw new PeError('http', `Worker trả 403. ${m}`, 403);
   }
   if (!res.ok) {
     const m = data?.error?.message || data?.message || res.statusText;
-    throw new PeError('http', `Worker tra loi ${res.status}: ${m}`, res.status);
+    throw new PeError('http', `Worker trả lỗi ${res.status}: ${m}`, res.status);
   }
   return data;
 }
@@ -72,20 +72,20 @@ export function certHint(e) {
   const code = String(e?.cause?.code || e?.code || '');
   const msg = String(e?.cause?.message || e?.message || '');
   if (!/SELF_SIGNED_CERT_IN_CHAIN/i.test(code + ' ' + msg)) return '';
-  return '\nGoi y: mang cong ty dang chan TLS bang proxy tu ky chung chi. ' +
-    'Lay file CA cua cong ty (tu IT, hoac export tu trinh duyet), roi dat bien moi truong ' +
-    'NODE_EXTRA_CA_CERTS=<duong-dan-file-ca.cer>, mo terminal MOI va chay lai. ' +
+  return '\nGợi ý: mạng công ty đang chặn TLS bằng proxy tự ký chứng chỉ. ' +
+    'Lấy file CA của công ty (từ IT, hoặc export từ trình duyệt), rồi đặt biến môi trường ' +
+    'NODE_EXTRA_CA_CERTS=<đường-dẫn-file-ca.cer>, mở terminal MỚI và chạy lại. ' +
     'Test nhanh trong 1 terminal: set NODE_EXTRA_CA_CERTS=C:\\path\\ca.cer && pe doctor';
 }
 
 function networkError(e) {
   const msg = e?.cause?.code || e?.name || 'network error';
-  return new PeError('network', `Khong noi duoc toi worker (${msg}). Kiem tra URL va mang.${certHint(e)}`);
+  return new PeError('network', `Không nối được tới worker (${msg}). Kiểm tra URL và mạng.${certHint(e)}`);
 }
 
 function checkModel(useModel) {
   if (!useModel || !String(useModel).endsWith(':free')) {
-    throw new PeError('model', `Model "${useModel}" khong hop le: worker chi cho phep model ket thuc bang ":free".`);
+    throw new PeError('model', `Model "${useModel}" không hợp lệ: worker chỉ cho phép model kết thúc bằng ":free".`);
   }
 }
 
@@ -133,7 +133,7 @@ export async function chatCompletion(cfg, { model, messages, temperature, maxTok
       const text = typeof message?.content === 'string' ? message.content : '';
       const toolCalls = parseToolCalls(message);
       if (!text && !toolCalls.length) {
-        throw new PeError('http', 'Worker tra ve dinh dang la (thieu choices[0].message.content).');
+        throw new PeError('http', 'Worker trả về định dạng lạ (thiếu choices[0].message.content).');
       }
       return { text, toolCalls, model: useModel, fellBack: useModel !== chain[0], raw: data };
     } catch (e) {
@@ -174,8 +174,8 @@ export async function chatCompletionStream(cfg, opts = {}) {
 async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeoutMs = 240000, signal, web } = {}) {
   const useModel = model || cfg.model;
   checkModel(useModel);
-  if (!cfg.workerUrl) throw new PeError('config', 'Chua co workerUrl. Chay `pe init` de cau hinh.');
-  if (!cfg.proxySecret) throw new PeError('config', 'Chua co proxySecret. Chay `pe init` de cau hinh.');
+  if (!cfg.workerUrl) throw new PeError('config', 'Chưa có workerUrl. Chạy `pe init` để cấu hình.');
+  if (!cfg.proxySecret) throw new PeError('config', 'Chưa có proxySecret. Chạy `pe init` để cấu hình.');
   let res;
   try {
     res = await fetch(cfg.workerUrl + '/api/chat', {
@@ -192,20 +192,20 @@ async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeout
     // Worker tu choi truoc khi stream (sai secret / model...) — doc body de phan loai.
     const data = await readBody(res);
     if (isFake404(res, data)) {
-      throw new PeError('auth', 'Worker tra ve trang 404 gia — sai proxy secret HOAC sai worker URL. Chay `pe init` de nhap lai.');
+      throw new PeError('auth', 'Worker trả về trang 404 giả — sai proxy secret HOẶC sai worker URL. Chạy `pe init` để nhập lại.');
     }
     const m = data?.error?.message || data?.message || res.statusText || '';
     if (res.status === 403 && /only :free models/i.test(m)) {
-      throw new PeError('model', `Worker tu choi: chi cho phep model :free. ${m}`);
+      throw new PeError('model', `Worker từ chối: chỉ cho phép model :free. ${m}`);
     }
-    if (!res.ok) throw new PeError('http', `Worker tra loi ${res.status}: ${m}`, res.status);
+    if (!res.ok) throw new PeError('http', `Worker trả lỗi ${res.status}: ${m}`, res.status);
     // Khong phai stream nhung la JSON hop le (worker/model bo qua stream):
     const text = data?.choices?.[0]?.message?.content;
     if (typeof text === 'string') {
       if (onToken) onToken(text);
       return { text, model: useModel };
     }
-    throw new PeError('http', 'Worker tra ve dinh dang la khi stream.');
+    throw new PeError('http', 'Worker trả về định dạng lạ khi stream.');
   }
   let full = '';
   let buf = '';
@@ -243,16 +243,16 @@ async function chatCompletionStreamOnce(cfg, { model, messages, onToken, timeout
   } catch (e) {
     if (!full) {
       const msg = e?.cause?.code || e?.name || 'network error';
-      throw new PeError('network', `Stream bi dut (${msg}).`);
+      throw new PeError('network', `Stream bị đứt (${msg}).`);
     }
     // Da co mot phan noi dung — tra ve phan do, kem ghi chu.
     full += '\n[stream bi dut giua chung]';
   }
   if (!full && streamError) {
-    throw new PeError('http', `Model loi khi stream: ${streamError.message}`, streamError.code);
+    throw new PeError('http', `Model lỗi khi stream: ${streamError.message}`, streamError.code);
   }
   if (!full) {
-    throw new PeError('http', 'Model ket thuc stream ma khong tra noi dung (co the dang bi gioi han) — thu lai sau.');
+    throw new PeError('http', 'Model kết thúc stream mà không trả nội dung (có thể đang bị giới hạn) — thử lại sau.');
   }
   if (streamError) full += `\n[luu y: stream co loi o cuoi: ${streamError.message}]`;
   return { text: full, model: useModel };

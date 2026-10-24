@@ -67,10 +67,10 @@ export function parseLessons(text) {
       continue;
     }
     if (!cur) continue;
-    const b = line.match(/^-\s*(Loi|Goc re|Lan sau)\s*:\s*(.*)$/);
+    const b = line.match(/^-\s*(Loi|Lỗi|Goc re|Gốc rễ|Lan sau|Lần sau)\s*:\s*(.*)$/);
     if (b) {
-      if (b[1] === 'Loi') cur.loi = b[2].trim();
-      else if (b[1] === 'Goc re') cur.gocRe = b[2].trim();
+      if (b[1] === 'Loi' || b[1] === 'Lỗi') cur.loi = b[2].trim();
+      else if (b[1] === 'Goc re' || b[1] === 'Gốc rễ') cur.gocRe = b[2].trim();
       else cur.lanSau = b[2].trim();
     }
   }
@@ -80,16 +80,16 @@ export function parseLessons(text) {
 
 export function formatLessonsFile(entries) {
   const head =
-    '# Bai hoc kinh nghiem (pe lessons)\n' +
-    '<!-- pe CLI quan ly file nay: `pe lessons` de xem/xoa, `/lesson <noi dung>` trong pe chat de ghi tay.\n' +
-    '     Sua tay van duoc — giu nguyen cau truc ## ngay · tag · xN va 3 dong - Loi / - Goc re / - Lan sau. -->\n';
+    '# Bài học kinh nghiệm (pe lessons)\n' +
+    '<!-- pe CLI quản lý file này: `pe lessons` để xem/xoá, `/lesson <nội dung>` trong pe chat để ghi tay.\n' +
+    '     Sửa tay vẫn được — giữ nguyên cấu trúc ## ngày · tag · xN và 3 dòng - Lỗi / - Gốc rễ / - Lần sau. -->\n';
   const body = entries
     .map((e) =>
       [
         `\n## ${e.date || todayStr()} · ${e.tag || 'chung'} · x${e.count || 1}`,
-        `- Loi: ${e.loi || ''}`,
-        ...(e.gocRe ? [`- Goc re: ${e.gocRe}`] : []),
-        `- Lan sau: ${e.lanSau || ''}`,
+        `- Lỗi: ${e.loi || ''}`,
+        ...(e.gocRe ? [`- Gốc rễ: ${e.gocRe}`] : []),
+        `- Lần sau: ${e.lanSau || ''}`,
       ].join('\n')
     )
     .join('\n');
@@ -207,12 +207,12 @@ export async function lessonsPromptBlock(cwd = process.cwd()) {
   if (!merged.length) return null;
   merged.sort((a, b) => (b.count - a.count) || String(b.date).localeCompare(String(a.date)));
   const lines = merged.slice(0, LESSONS_PROMPT_LIMIT).map((e, i) => {
-    const parts = [`${i + 1}. [${e.tag}${e.count > 1 ? ` x${e.count}` : ''}] Loi: ${e.loi}`];
-    if (e.gocRe) parts.push(`Goc re: ${e.gocRe}`);
-    parts.push(`Lan sau: ${e.lanSau}`);
+    const parts = [`${i + 1}. [${e.tag}${e.count > 1 ? ` x${e.count}` : ''}] Lỗi: ${e.loi}`];
+    if (e.gocRe) parts.push(`Gốc rễ: ${e.gocRe}`);
+    parts.push(`Lần sau: ${e.lanSau}`);
     return parts.join(' | ');
   });
-  const block = `Bai hoc kinh nghiem tu cac loi truoc day (PHAI tranh lap lai):\n${lines.join('\n')}`;
+  const block = `Bài học kinh nghiệm từ các lỗi trước đây (PHẢI tránh lặp lại):\n${lines.join('\n')}`;
   return block.slice(0, LESSONS_PROMPT_CHARS);
 }
 
@@ -232,13 +232,13 @@ export async function loadContextWithLessons(cwd = process.cwd()) {
 
 export const DISTILL_MARKER = 'PE-DISTILL v1';
 
-const DISTILL_SYSTEM = `${DISTILL_MARKER} — Ban la bo rut bai hoc cua pe CLI. Nguoi dung vua lam xong 1 viec trong do agent co pham loi nhung DA khac phuc duoc. Nhiem vu: rut ra cac bai hoc NGAN, TONG QUAT, dung duoc cho lan sau (khong ke lai dien bien, khong chua ten file/dong cu the neu khong can).
+const DISTILL_SYSTEM = `${DISTILL_MARKER} — Bạn là bộ rút bài học của pe CLI. Người dùng vừa làm xong 1 việc trong đó agent có phạm lỗi nhưng ĐÃ khắc phục được. Nhiệm vụ: rút ra các bài học NGẮN, TỔNG QUÁT, dùng được cho lần sau (không kể lại diễn biến, không chứa tên file/dòng cụ thể nếu không cần).
 
-Tra ve DUY NHAT 1 mang JSON (khong giai thich, khong markdown):
+Trả về DUY NHẤT 1 mảng JSON (không giải thích, không markdown):
 [{"loi": "...", "gocRe": "...", "lanSau": "...", "tag": "run_bash|edit_file|read_file|grep|khac", "scope": "project|global"}]
-- "lanSau" la cau lenh hanh dong cu the (bat dau bang dong tu).
-- scope "global" chi khi bai hoc dung o moi project/moi may (moi truong, he dieu hanh, mang, cong cu); con lai "project".
-- Toi da 3 bai hoc. Khong co bai hoc nao dang gia thi tra ve [].`;
+- "lanSau" là câu lệnh hành động cụ thể (bắt đầu bằng động từ).
+- scope "global" chỉ khi bài học đúng ở mọi project/mọi máy (môi trường, hệ điều hành, mạng, công cụ); còn lại "project".
+- Tối đa 3 bài học. Không có bài học nào đáng giá thì trả về [].`;
 
 /**
  * Goi model rut bai hoc tu danh sach su co (incidents) cua 1 luot agent
@@ -247,13 +247,13 @@ Tra ve DUY NHAT 1 mang JSON (khong giai thich, khong markdown):
 export async function distillLessons(cfg, { task, incidents, finalText } = {}) {
   if (!incidents?.length) return [];
   const incText = incidents
-    .map((i, n) => `${n + 1}. Tool ${i.tool} (${i.desc})\n   Loi: ${String(i.error || '').split('\n').slice(0, 4).join(' | ').slice(0, 400)}`)
+    .map((i, n) => `${n + 1}. Tool ${i.tool} (${i.desc})\n   Lỗi: ${String(i.error || '').split('\n').slice(0, 4).join(' | ').slice(0, 400)}`)
     .join('\n');
   const messages = [
     { role: 'system', content: DISTILL_SYSTEM },
     {
       role: 'user',
-      content: `Viec vua lam: ${task || '(khong ro)'}\n\nCac loi da gap roi sua xong:\n${incText}\n\nKet qua cuoi cua agent: ${String(finalText || '').slice(0, 600)}`,
+      content: `Việc vừa làm: ${task || '(không rõ)'}\n\nCác lỗi đã gặp rồi sửa xong:\n${incText}\n\nKết quả cuối của agent: ${String(finalText || '').slice(0, 600)}`,
     },
   ];
   const { text } = await chatCompletion(cfg, { model: cfg.model, messages, temperature: 0 });
@@ -277,11 +277,11 @@ export async function distillLessons(cfg, { task, incidents, finalText } = {}) {
 /** Dinh dang 1 bai hoc de in ra cho nguoi dung duyet. */
 export function formatLessonForReview(e, idx, total) {
   const lines = [
-    `  [Bai hoc ${idx + 1}/${total}] pham vi: ${e.scope === 'global' ? 'toan cuc (moi project)' : 'project nay'}`,
-    `    Loi: ${e.loi || '(khong ro)'}`,
+    `  [Bài học ${idx + 1}/${total}] phạm vi: ${e.scope === 'global' ? 'toàn cục (mọi project)' : 'project này'}`,
+    `    Lỗi: ${e.loi || '(không rõ)'}`,
   ];
-  if (e.gocRe) lines.push(`    Goc re: ${e.gocRe}`);
-  lines.push(`    Lan sau: ${e.lanSau}`);
+  if (e.gocRe) lines.push(`    Gốc rễ: ${e.gocRe}`);
+  lines.push(`    Lần sau: ${e.lanSau}`);
   return lines.join('\n');
 }
 
@@ -294,17 +294,17 @@ export async function reviewAndSaveLessons({ candidates, ask, cwd = process.cwd(
   for (let i = 0; i < candidates.length; i++) {
     const e = candidates[i];
     console.log(formatLessonForReview(e, i, candidates.length));
-    const ok = await ask('  Luu bai hoc nay? (y/N) ');
+    const ok = await ask('  Lưu bài học này? (y/N) ');
     if (!ok) {
-      console.log('  (bo qua)');
+      console.log('  (bỏ qua)');
       continue;
     }
     const r = await saveLesson(e, e.scope, cwd);
     saved++;
     console.log(
       r.action === 'merged'
-        ? `  Da gop vao bai hoc cu (bay gio x${r.entry.count}) — ${r.file}`
-        : `  Da luu bai hoc moi — ${r.file}`
+        ? `  Đã gộp vào bài học cũ (bây giờ x${r.entry.count}) — ${r.file}`
+        : `  Đã lưu bài học mới — ${r.file}`
     );
   }
   return saved;

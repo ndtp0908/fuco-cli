@@ -72,3 +72,14 @@ export async function latestSession(home) {
   const all = await listSessions(home);
   return all.length ? all[0] : null;
 }
+
+/** Xoa 1 phien theo id. Tra true neu da xoa, false neu khong ton tai. */
+export async function deleteSession(id, home) {
+  if (!/^[A-Za-z0-9_-]+$/.test(String(id || ''))) return false;
+  try {
+    await fs.unlink(sessionPath(id, home));
+    return true;
+  } catch {
+    return false;
+  }
+}

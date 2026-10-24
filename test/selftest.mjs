@@ -88,10 +88,10 @@ function startMock() {
             return res.end(JSON.stringify({ error: { message: 'Rate limit exceeded' } }));
           }
           let reply = 'MOCK-REPLY-OK';
-          if (sysText.includes('Ban tom tat cuoc hoi thoai')) {
+          if (sysText.includes('Bạn tóm tắt cuộc hội thoại')) {
             reply = 'TOM-TAT-X';
           } else 
-          if (sysText.includes('cong cu sua file')) {
+          if (sysText.includes('công cụ sửa file')) {
             const mm = String(lastContent || '').match(/```\n([\s\S]*?)\n```/);
             const fc = mm ? mm[1] : '';
             reply = '```\n' + fc.replace('ORIGINAL', 'EDITED') + '\n```';
@@ -104,7 +104,7 @@ function startMock() {
             // tiep theo "start" o footer cua ket qua tool gan nhat; doc
             // het (thay dong cuoi) thi tra loi xong.
             const lastStr = typeof lastContent === 'string' ? lastContent : '';
-            const foot = lastStr.match(/Doc tiep: read_file \{"path": "big\.txt", "start": (\d+)\}/);
+            const foot = lastStr.match(/Đọc tiếp: read_file \{"path": "big\.txt", "start": (\d+)\}/);
             if (foot) {
               reply = '```json\n' + JSON.stringify({ tool: 'read_file', args: { path: 'big.txt', start: Number(foot[1]) } }) + '\n```';
             } else if (lastStr.includes('LINE-2500')) {
@@ -112,7 +112,7 @@ function startMock() {
             } else {
               reply = '```json\n{"tool": "read_file", "args": {"path": "big.txt"}}\n```';
             }
-          } else if (allText.includes('Ket qua tool') && allText.includes('Da sua')) {
+          } else if (allText.includes('Ket qua tool') && allText.includes('Đã sửa')) {
             reply = 'AGENT-DONE';
           } else if (allText.includes('Ket qua tool') && allText.includes('ORIGINAL-CONTENT')) {
             reply = '```json\n{"tool": "edit_file", "args": {"path": "a.txt", "old_text": "ORIGINAL-CONTENT", "new_text": "EDITED-CONTENT"}}\n```';
@@ -155,7 +155,7 @@ function startMock() {
           // --- v0.9 tu chua: HEAL (model bo cuoc) + VERIFY + EDIT-RETRY ---
           {
             const lastStr2 = typeof lastContent === 'string' ? lastContent : '';
-            if (lastStr2.includes('Van con loi chua duoc xu ly')) {
+            if (lastStr2.includes('Vẫn còn lỗi chưa được xử lý')) {
               reply = '```json\n{"tool":"run_bash","args":{"command":"true"}}\n```';
             } else if (lastStr2.includes('HEAL-TASK')) {
               reply = '```json\n{"tool":"run_bash","args":{"command":"false"}}\n```';
@@ -164,15 +164,15 @@ function startMock() {
             } else if (lastStr2.includes('Ket qua tool') && lastStr2.includes('Exit: 0') && allText.includes('HEAL-TASK')) {
               reply = 'HEAL-DONE';
             }
-            if (lastStr2.includes('Lenh kiem chung')) {
+            if (lastStr2.includes('Lệnh kiểm chứng')) {
               reply = '```json\n{"tool":"write_file","args":{"path":"vdone.txt","content":"ok"}}\n```';
             } else if (lastStr2.includes('VERIFY-TASK')) {
               reply = 'WORK-DONE';
-            } else if (lastStr2.includes('Ket qua tool') && allText.includes('Lenh kiem chung')) {
+            } else if (lastStr2.includes('Ket qua tool') && allText.includes('Lệnh kiểm chứng')) {
               reply = 'FIXED-DONE';
             }
-            if (sysText.includes('cong cu sua file') && allText.includes('EDIT-RETRY-MARK')) {
-              reply = allText.includes('tra ve lai TOAN BO')
+            if (sysText.includes('công cụ sửa file') && allText.includes('EDIT-RETRY-MARK')) {
+              reply = allText.includes('trả về lại TOÀN BỘ')
                 ? '```\nEDITED-LINE\n```'
                 : 'GARBAGE-KHONG-DINH-DANG';
             }
@@ -241,7 +241,7 @@ async function main() {
   let r = await runCli(['--help'], { PE_HOME: tmpHome });
   ok('--help exit 0 va co huong dan', r.code === 0 && r.out.includes('pe ask'), `code=${r.code}`);
   r = await runCli(['lenh-la'], { PE_HOME: tmpHome });
-  ok('lenh la -> exit 2', r.code === 2 && r.err.includes('Lenh la'), `code=${r.code}`);
+  ok('lenh la -> exit 2', r.code === 2 && r.err.includes('Lệnh lạ'), `code=${r.code}`);
   r = await runCli(['--version'], { PE_HOME: tmpHome });
   ok('--version in ra', r.code === 0 && /^\d+\.\d+\.\d+/.test(r.out.trim()), r.out.trim());
 
@@ -266,10 +266,10 @@ async function main() {
   ok('ask model non-free -> loi ro rang', r.code === 1 && r.err.includes(':free'), `code=${r.code} err=${r.err.slice(0, 80)}`);
 
   r = await runCli(['ask', 'hi'], { ...menv, PE_PROXY_SECRET: 'sai' });
-  ok('sai secret -> bao 404 gia/auth', r.code === 1 && r.err.includes('404 gia'), `code=${r.code} err=${r.err.slice(0, 80)}`);
+  ok('sai secret -> bao 404 gia/auth', r.code === 1 && r.err.includes('404 giả'), `code=${r.code} err=${r.err.slice(0, 80)}`);
 
   r = await runCli(['ask', 'hi'], { ...menv, PE_WORKER_URL: 'http://127.0.0.1:1' });
-  ok('worker khong toi duoc -> loi network', r.code === 1 && r.err.includes('Khong noi duoc'), `code=${r.code}`);
+  ok('worker khong toi duoc -> loi network', r.code === 1 && r.err.includes('Không nối được'), `code=${r.code}`);
 
   // 6. dinh kem file / anh / mention / stdin kem prompt
   const codePath = path.join(tmpHome, 'code.txt');
@@ -290,11 +290,11 @@ async function main() {
   ok('ask prompt + stdin pipe gui kem stdin', r.code === 0 && r.out.includes('MOCK-FILE-OK'), `code=${r.code} out=${r.out.slice(0, 80)}`);
 
   r = await runCli(['ask', 'hi', '--file', path.join(tmpHome, 'khong-co.txt')], menv);
-  ok('ask --file khong ton tai -> loi ro rang', r.code === 2 && r.err.includes('Khong tim thay'), `code=${r.code} err=${r.err.slice(0, 80)}`);
+  ok('ask --file khong ton tai -> loi ro rang', r.code === 2 && r.err.includes('Không tìm thấy'), `code=${r.code} err=${r.err.slice(0, 80)}`);
 
   // 7. help chi tiet tung lenh
   r = await runCli(['help', 'ask'], { PE_HOME: tmpHome });
-  ok('pe help ask co --file/--image + vi du', r.code === 0 && r.out.includes('--image') && r.out.includes('Vi du'), `code=${r.code}`);
+  ok('pe help ask co --file/--image + vi du', r.code === 0 && r.out.includes('--image') && r.out.includes('Ví dụ'), `code=${r.code}`);
   r = await runCli(['ask', '--help'], { PE_HOME: tmpHome });
   ok('pe ask --help khong goi worker', r.code === 0 && r.out.includes('--file') && !r.out.includes('MOCK'), `code=${r.code}`);
   r = await runCli(['help', 'chat'], { PE_HOME: tmpHome });
@@ -384,8 +384,8 @@ async function main() {
   await fs.mkdir(projLoop, { recursive: true });
   await fs.writeFile(path.join(projLoop, 'a.txt'), 'LOOPFILE-CONTENT');
   r = await runCli(['do', 'LOOP-TASK doc a.txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projLoop });
-  const loopCalls = (r.out.match(/doc file a\.txt/g) || []).length;
-  ok('agent tu phat hien lap that va dung som (<=6 luot goi trung)', r.code === 0 && r.out.includes('Phat hien vong lap') && loopCalls > 0 && loopCalls <= 6, `code=${r.code} calls=${loopCalls} out=${r.out.slice(0, 140)}`);
+  const loopCalls = (r.out.match(/đọc file a\.txt/g) || []).length;
+  ok('agent tu phat hien lap that va dung som (<=6 luot goi trung)', r.code === 0 && r.out.includes('Phát hiện vòng lặp') && loopCalls > 0 && loopCalls <= 6, `code=${r.code} calls=${loopCalls} out=${r.out.slice(0, 140)}`);
 
   const projPage = path.join(tmpHome, 'proj-page');
   await fs.mkdir(projPage, { recursive: true });
@@ -393,8 +393,8 @@ async function main() {
   for (let i = 1; i <= 2500; i++) bigLines.push(`LINE-${i} ${'x'.repeat(50)}`);
   await fs.writeFile(path.join(projPage, 'big.txt'), bigLines.join('\n'));
   r = await runCli(['do', 'PAGE-TASK doc het big.txt'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projPage });
-  const pageCalls = (r.out.match(/doc file big\.txt/g) || []).length;
-  ok('doc file 2500 dong phan trang chay het, khong bao lap oan', r.code === 0 && r.out.includes('PAGE-DONE') && !r.out.includes('Phat hien vong lap') && pageCalls >= 5, `code=${r.code} calls=${pageCalls} out=${r.out.slice(0, 140)}`);
+  const pageCalls = (r.out.match(/đọc file big\.txt/g) || []).length;
+  ok('doc file 2500 dong phan trang chay het, khong bao lap oan', r.code === 0 && r.out.includes('PAGE-DONE') && !r.out.includes('Phát hiện vòng lặp') && pageCalls >= 5, `code=${r.code} calls=${pageCalls} out=${r.out.slice(0, 140)}`);
 
   // 15. assign + result qua mock KV
   const menvKV = { ...menv, PE_PE_WORKER_URL: mockUrl };
@@ -406,7 +406,7 @@ async function main() {
     ok('pe result lay duoc dap an', r.code === 0 && r.out.includes('MOCK-ANSWER'), `code=${r.code} out=${r.out.slice(0, 100)}`);
   }
   r = await runCli(['tasks'], menvKV);
-  ok('pe tasks chay duoc', r.code === 0 && r.out.includes('Hang doi'), `code=${r.code} out=${r.out.slice(0, 80)}`);
+  ok('pe tasks chay duoc', r.code === 0 && r.out.includes('Hàng đợi'), `code=${r.code} out=${r.out.slice(0, 80)}`);
 
   // 16. sessions: chat luu phien, --resume noi tiep duoc
   const sessHome = path.join(tmpHome, 'sess-home');
@@ -424,6 +424,27 @@ async function main() {
     r = await runCli(['chat', '--resume'], menvSess, 'cau hoi hai\n/exit\n');
     const s2 = JSON.parse(await fs.readFile(path.join(sessDir, sessFiles[0]), 'utf8'));
     ok('--resume noi tiep cung phien (4 tin)', r.code === 0 && s2.messages.length === 4, `code=${r.code} n=${s2.messages.length}`);
+    // v0.10: sessions rm
+    r = await runCli(['sessions', 'rm', 's_khong_co'], menvSess, '');
+    const badRm = r.code === 2;
+    r = await runCli(['sessions', 'rm', s2.id], menvSess, '');
+    let afterRm = [];
+    try { afterRm = await fs.readdir(sessDir); } catch {}
+    ok('v0.10: sessions rm xoa dung phien + id la -> exit 2', badRm && r.code === 0 && r.out.includes('Đã xoá phiên') && afterRm.length === 0, `code=${r.code} files=${afterRm.length} out=${r.out.slice(0, 80)}`);
+  }
+
+  // 16b. v0.10: pe config — xem/set ngay trong CLI
+  {
+    const cfgHome = path.join(tmpHome, 'cfg-home');
+    const cenv = { PE_HOME: cfgHome };
+    r = await runCli(['config', 'set', 'model', 'x/test:free'], cenv, '');
+    const setOk = r.code === 0;
+    r = await runCli(['config', 'get', 'model'], cenv, '');
+    const getOk = r.out.includes('x/test:free');
+    r = await runCli(['config', 'set', 'approval', '9'], cenv, '');
+    const badOk = r.code === 2;
+    r = await runCli(['config'], cenv, '');
+    ok('v0.10: pe config set/get + tong quan + chan gia tri sai', setOk && getOk && badOk && r.out.includes('Cấu hình toàn cục'), `set=${setOk} get=${getOk} bad=${badOk} out=${r.out.slice(0, 80)}`);
   }
 
   // 17. auto-compact: phien seed 16 tin + context limit nho -> tom tat
@@ -452,7 +473,7 @@ async function main() {
 
   // 19. Goi B: fallback khi model chinh bi 429
   r = await runCli(['ask', 'hi'], { ...menv, PE_MODEL: 'flaky-model:free', PE_FALLBACK_MODELS: FREE_MODEL });
-  ok('ask tu chuyen model du phong khi 429', r.code === 0 && r.out.includes('MOCK-REPLY-OK') && r.err.includes('du phong'), `code=${r.code} out=${r.out.slice(0, 60)} err=${r.err.slice(0, 80)}`);
+  ok('ask tu chuyen model du phong khi 429', r.code === 0 && r.out.includes('MOCK-REPLY-OK') && r.err.includes('dự phòng'), `code=${r.code} out=${r.out.slice(0, 60)} err=${r.err.slice(0, 80)}`);
 
   // 20. model list --vision
   r = await runCli(['model', 'list', '--vision'], menv);
@@ -486,7 +507,7 @@ async function main() {
   r = await runCli(['init', '--project'], menv, '', { cwd: projRules });
   r = await runCli(['rules', 'export'], menv, '', { cwd: projRules });
   try { rulesText = await fs.readFile(path.join(projRules, '.muserules'), 'utf8'); } catch {}
-  ok('rules export dong bo context.md sang .muserules', r.code === 0 && rulesText.includes('Ngu canh project'), `code=${r.code}`);
+  ok('rules export dong bo context.md sang .muserules', r.code === 0 && rulesText.includes('Ngữ cảnh project'), `code=${r.code}`);
   const projRules2 = path.join(tmpHome, 'proj-rules2');
   await fs.mkdir(projRules2, { recursive: true });
   await fs.writeFile(path.join(projRules2, '.muserules'), 'Quy tac rieng: CTX-MARKER-123');
@@ -531,7 +552,7 @@ async function main() {
     ok('grep giu nguyen pattern thuong', normalizeGrepPattern('a"b') === 'a"b', normalizeGrepPattern('a"b'));
     const { currentTimeLine } = await import('../src/lib/now.mjs');
     const tl = currentTimeLine(new Date(2026, 9, 23, 15, 4));
-    ok('currentTimeLine co ngay/thang/nam dung', tl.includes('23/10/2026') && tl.includes('Thoi gian hien tai'), tl.slice(0, 80));
+    ok('currentTimeLine co ngay/thang/nam dung', tl.includes('23/10/2026') && tl.includes('Thời gian hiện tại'), tl.slice(0, 80));
   }
 
   // 26. Goi y chung chi tu ky khi mang cong ty chan TLS
@@ -549,7 +570,7 @@ async function main() {
   r = await runCli(['ask', 'WEB-TASK tin moi nhat'], menv);
   ok('ask khong --web thi khong co co web', r.code === 0 && r.out.includes('MOCK-REPLY-OK') && !r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 80)}`);
   r = await runCli(['chat'], menv, '/web on\nWEBCHAT cau hoi web\n/exit\n', { cwd: projChat });
-  ok('chat /web on -> luot hoi co web:true', r.code === 0 && r.out.includes('Tim kiem web: BAT') && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 160)}`);
+  ok('chat /web on -> luot hoi co web:true', r.code === 0 && r.out.includes('Tìm kiếm web: BẬT') && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 160)}`);
   r = await runCli(['do', 'WEBDO viec can web', '--web'], { ...menv, PE_APPROVAL: '3' }, '', { cwd: projLoop });
   ok('do --web gui web:true o lan goi dau', r.code === 0 && r.out.includes('WEB-FLAG-OK'), `code=${r.code} out=${r.out.slice(0, 120)}`);
 
@@ -562,7 +583,7 @@ async function main() {
   r = await runCli(['do', 'LESSON-TASK sua loi build', '--yolo'], menv, 'y\n', { cwd: projLesson });
   let lessonText = '';
   try { lessonText = await fs.readFile(lessonFile, 'utf8'); } catch { /* chua co */ }
-  ok('do loi->sua->xong: de xuat bai hoc + duyet y thi luu file', r.code === 0 && r.out.includes('Da luu bai hoc moi') && lessonText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code} out=${r.out.slice(-300)} file=${lessonText.slice(0, 120)}`);
+  ok('do loi->sua->xong: de xuat bai hoc + duyet y thi luu file', r.code === 0 && r.out.includes('Đã lưu bài học mới') && lessonText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code} out=${r.out.slice(-300)} file=${lessonText.slice(0, 120)}`);
   r = await runCli(['ask', 'hoi thu xem'], menv, '', { cwd: projLesson });
   ok('phien sau: bai hoc tu nap vao system prompt', r.code === 0 && r.out.includes('LESSON-INJECTED-OK'), `code=${r.code} out=${r.out.slice(0, 120)}`);
   r = await runCli(['do', 'LESSON-TASK sua loi build', '--yolo'], menv, 'y\n', { cwd: projLesson });
@@ -571,7 +592,7 @@ async function main() {
   r = await runCli(['lessons'], menv, '', { cwd: projLesson });
   ok('pe lessons liet ke duoc bai hoc', r.code === 0 && r.out.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code}`);
   r = await runCli(['lessons', 'rm', 'project', '1'], menv, '', { cwd: projLesson });
-  ok('pe lessons rm xoa duoc', r.code === 0 && r.out.includes('Da xoa bai hoc'), `code=${r.code} out=${r.out.slice(0, 100)}`);
+  ok('pe lessons rm xoa duoc', r.code === 0 && r.out.includes('Đã xoá bài học'), `code=${r.code} out=${r.out.slice(0, 100)}`);
   lessonText = await fs.readFile(lessonFile, 'utf8');
   ok('sau rm: file khong con bai hoc do', !lessonText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), '');
 
@@ -581,7 +602,7 @@ async function main() {
   r = await runCli(['chat'], menv, '/lesson Khong dung ham X nua\n/exit\n', { cwd: projChatLesson });
   let chatLessonText = '';
   try { chatLessonText = await fs.readFile(path.join(projChatLesson, '.pe', 'lessons.md'), 'utf8'); } catch { /* chua co */ }
-  ok('chat /lesson ghi tay luu ngay', r.code === 0 && r.out.includes('Da luu bai hoc') && chatLessonText.includes('Khong dung ham X nua'), `code=${r.code} out=${r.out.slice(0, 200)}`);
+  ok('chat /lesson ghi tay luu ngay', r.code === 0 && r.out.includes('Đã lưu bài học') && chatLessonText.includes('Khong dung ham X nua'), `code=${r.code} out=${r.out.slice(0, 200)}`);
 
   const projChatRev = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-chatrev-'));
   await fs.mkdir(path.join(projChatRev, '.pe'), { recursive: true });
@@ -589,29 +610,29 @@ async function main() {
   r = await runCli(['chat'], { ...menv, PE_APPROVAL: '3' }, 'LESSONCHAT lam viec\ny\n/exit\n', { cwd: projChatRev });
   let revText = '';
   try { revText = await fs.readFile(path.join(projChatRev, '.pe', 'lessons.md'), 'utf8'); } catch { /* chua co */ }
-  ok('chat: agent loi->sua xong thi de xuat bai hoc, go y la luu', r.code === 0 && r.out.includes('Bai hoc de xuat') && r.out.includes('Da luu bai hoc') && revText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code} out=${r.out.slice(-400)} file=${revText.slice(0, 120)}`);
+  ok('chat: agent loi->sua xong thi de xuat bai hoc, go y la luu', r.code === 0 && r.out.includes('Bài học đề xuất') && r.out.includes('Đã lưu bài học') && revText.includes('Kiem tra Exit: 0 sau moi lenh quan trong'), `code=${r.code} out=${r.out.slice(-400)} file=${revText.slice(0, 120)}`);
 
   // 29. Tu chua (v0.9): heal khi model bo cuoc, edit thu lai, --verify.
   const projHeal = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-heal-'));
   r = await runCli(['do', 'HEAL-TASK chay thu', '--yolo'], menv, 'n\n', { cwd: projHeal });
-  ok('agent bo cuoc khi con loi: heal tu them luot sua -> xong', r.code === 0 && r.out.includes('[tu chua]') && r.out.includes('HEAL-DONE'), `code=${r.code} out=${r.out.slice(-260)}`);
+  ok('agent bo cuoc khi con loi: heal tu them luot sua -> xong', r.code === 0 && r.out.includes('[tự chữa]') && r.out.includes('HEAL-DONE'), `code=${r.code} out=${r.out.slice(-260)}`);
 
   const projEditRetry = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-editretry-'));
   await fs.writeFile(path.join(projEditRetry, 'code.txt'), 'ORIGINAL-LINE\n');
   r = await runCli(['edit', 'code.txt', 'EDIT-RETRY-MARK sua dong nay', '--yes'], menv, '', { cwd: projEditRetry });
   const afterRetry = await fs.readFile(path.join(projEditRetry, 'code.txt'), 'utf8');
-  ok('pe edit: lan 1 sai dinh dang -> thu lai lan 2 thanh cong', r.code === 0 && r.out.includes('thu lai 1 lan') && afterRetry.includes('EDITED-LINE'), `code=${r.code} out=${r.out.slice(0, 220)} file=${afterRetry.slice(0, 40)}`);
+  ok('pe edit: lan 1 sai dinh dang -> thu lai lan 2 thanh cong', r.code === 0 && r.out.includes('thử lại 1 lần') && afterRetry.includes('EDITED-LINE'), `code=${r.code} out=${r.out.slice(0, 220)} file=${afterRetry.slice(0, 40)}`);
 
   const projVerify = await fs.mkdtemp(path.join(os.tmpdir(), 'pe-proj-verify-'));
   r = await runCli(['do', 'VERIFY-TASK lam viec', '--yolo', '--verify', 'test -f vdone.txt'], menv, '', { cwd: projVerify });
   let vExists = false;
   try { await fs.stat(path.join(projVerify, 'vdone.txt')); vExists = true; } catch { /* chua co */ }
-  ok('do --verify: fail -> agent sua -> chay lai PASS', r.code === 0 && r.out.includes('[kiem chung] PASS') && vExists, `code=${r.code} out=${r.out.slice(-260)}`);
+  ok('do --verify: fail -> agent sua -> chay lai PASS', r.code === 0 && r.out.includes('[kiểm chứng] PASS') && vExists, `code=${r.code} out=${r.out.slice(-260)}`);
   r = await runCli(['do', 'VERIFY-TASK lam viec', '--yolo', '--verify', 'false'], menv, '', { cwd: projVerify });
-  ok('do --verify: sua 2 vong van fail -> exit 1', r.code === 1 && r.out.includes('Van FAIL sau 2 vong sua'), `code=${r.code} out=${r.out.slice(-220)}`);
+  ok('do --verify: sua 2 vong van fail -> exit 1', r.code === 1 && r.out.includes('Vẫn FAIL sau 2 vòng sửa'), `code=${r.code} out=${r.out.slice(-220)}`);
 
   r = await runCli(['doctor'], menv);
-  ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tat ca deu on'), `code=${r.code}`);
+  ok('doctor voi mock worker -> exit 0', r.code === 0 && r.out.includes('Tất cả đều ổn'), `code=${r.code}`);
 
   r = await runCli(['model', 'list'], menv);
   ok('model list loc :free', r.code === 0 && r.out.includes(FREE_MODEL) && !r.out.includes('pro-model'), r.out.trim());

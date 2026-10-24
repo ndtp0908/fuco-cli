@@ -39,10 +39,10 @@ export async function runRules(args = []) {
     const hasRules = await exists(rulesPath);
     const lessonsPath = path.join(cwd, '.pe', 'lessons.md');
     const hasLessons = await exists(lessonsPath);
-    console.log(`.pe/context.md : ${hasCtx ? 'co (' + (await fs.readFile(ctxPath, 'utf8')).length + ' ky tu)' : 'chua co — pe init --project de tao'}`);
-    console.log(`.pe/lessons.md : ${hasLessons ? 'co (' + (await fs.readFile(lessonsPath, 'utf8')).length + ' ky tu) — xem: pe lessons' : 'chua co — bai hoc se duoc de xuat khi agent pham loi roi sua xong'}`);
-    console.log(`.muserules    : ${hasRules ? 'co (' + (await fs.readFile(rulesPath, 'utf8')).length + ' ky tu)' : 'chua co — pe rules install de cai bo quy tac chuan'}`);
-    console.log('\npe tu nap ca context.md, lessons.md va .muserules lam ngu canh project. Dong bo: pe rules export | import (export kem theo bai hoc)');
+    console.log(`.pe/context.md : ${hasCtx ? 'có (' + (await fs.readFile(ctxPath, 'utf8')).length + ' ký tự)' : 'chưa có — pe init --project để tạo'}`);
+    console.log(`.pe/lessons.md : ${hasLessons ? 'có (' + (await fs.readFile(lessonsPath, 'utf8')).length + ' ký tự) — xem: pe lessons' : 'chưa có — bài học sẽ được đề xuất khi agent phạm lỗi rồi sửa xong'}`);
+    console.log(`.muserules    : ${hasRules ? 'có (' + (await fs.readFile(rulesPath, 'utf8')).length + ' ký tự)' : 'chưa có — pe rules install để cài bộ quy tắc chuẩn'}`);
+    console.log('\npé tự nạp cả context.md, lessons.md và .muserules làm ngữ cảnh project. Đồng bộ: pe rules export | import (export kèm theo bài học)');
     return;
   }
 
@@ -50,18 +50,18 @@ export async function runRules(args = []) {
     let cur = '';
     try { cur = await fs.readFile(rulesPath, 'utf8'); } catch { /* moi */ }
     if (cur.includes('PE-CLINE-PACK')) {
-      console.log('.muserules da co bo quy tac pe roi — khong can cai lai.');
+      console.log('.muserules đã có bộ quy tắc pé rồi — không cần cài lại.');
       return;
     }
     if (cur) await backupFile(rulesPath);
     await fs.writeFile(rulesPath, cur ? cur.replace(/\s+$/, '') + '\n' + CLINE_PACK : '# Quy tac cho Cline\n' + CLINE_PACK, 'utf8');
-    console.log(`Da cai bo quy tac vao ${rulesPath}${cur ? ' (noi them vao cuoi file, co backup ban cu)' : ''}.`);
+    console.log(`Đã cài bộ quy tắc vào ${rulesPath}${cur ? ' (nối thêm vào cuối file, có backup bản cũ)' : ''}.`);
     return;
   }
 
   if (sub === 'export') {
     if (!(await exists(ctxPath))) {
-      console.error('Chua co .pe/context.md — chay pe init --project truoc.');
+      console.error('Chưa có .pe/context.md — chạy pe init --project trước.');
       process.exitCode = 2;
       return;
     }
@@ -76,21 +76,21 @@ export async function runRules(args = []) {
       const entries = await readLessons(lessonsPath);
       if (entries.length) {
         const items = entries
-          .map((e) => `- [${e.tag}${e.count > 1 ? ` x${e.count}` : ''}] Loi: ${e.loi} | Lan sau: ${e.lanSau}`)
+          .map((e) => `- [${e.tag}${e.count > 1 ? ` x${e.count}` : ''}] Lỗi: ${e.loi} | Lần sau: ${e.lanSau}`)
           .join('\n');
-        const section = `\n\n<!-- PE-LESSONS (dong bo boi pe rules export) -->\n## Lessons learned (from pe — tranh lap lai cac loi nay)\n\n${items}\n<!-- /PE-LESSONS -->\n`;
+        const section = `\n\n<!-- PE-LESSONS (đồng bộ bởi pe rules export) -->\n## Lessons learned (from pe — tránh lặp lại các lỗi này)\n\n${items}\n<!-- /PE-LESSONS -->\n`;
         text = text.replace(/<!-- PE-LESSONS[\s\S]*?<!-- \/PE-LESSONS -->/, '').replace(/\s+$/, '') + section;
-        lessonNote = ` Kem theo ${entries.length} bai hoc tu .pe/lessons.md.`;
+        lessonNote = ` Kèm theo ${entries.length} bài học từ .pe/lessons.md.`;
       }
     }
     await fs.writeFile(rulesPath, text, 'utf8');
-    console.log(`Da dong bo .pe/context.md -> .muserules (${text.length} ky tu).${lessonNote} Tu gio Cline va pe doc chung 1 bo nho.`);
+    console.log(`Đã đồng bộ .pe/context.md -> .muserules (${text.length} ký tự).${lessonNote} Từ giờ Cline và pé đọc chung 1 bộ nhớ.`);
     return;
   }
 
   if (sub === 'import') {
     if (!(await exists(rulesPath))) {
-      console.error('Chua co .muserules o thu muc nay.');
+      console.error('Chưa có .muserules ở thư mục này.');
       process.exitCode = 2;
       return;
     }
@@ -98,10 +98,10 @@ export async function runRules(args = []) {
     if (await exists(ctxPath)) await backupFile(ctxPath);
     const text = await fs.readFile(rulesPath, 'utf8');
     await fs.writeFile(ctxPath, text, 'utf8');
-    console.log(`Da dong bo .muserules -> .pe/context.md (${text.length} ky tu).`);
+    console.log(`Đã đồng bộ .muserules -> .pe/context.md (${text.length} ký tự).`);
     return;
   }
 
-  console.error('Dung: pe rules [status|install|export|import]');
+  console.error('Dùng: pe rules [status|install|export|import]');
   process.exitCode = 2;
 }
