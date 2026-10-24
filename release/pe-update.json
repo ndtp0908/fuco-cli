@@ -1,7 +1,1 @@
-{
- "version": "0.10.0",
- "exeUrl": "https://drive.usercontent.google.com/download?id=1xDEMGoCb6jHSUmfQW8PAwUMFPfaLwe4N&export=download&confirm=t",
- "sha256": "1e3198cea7f330f65375a073ff5508fe91bbce3563f86a1438af75c1136fda41",
- "size": 94218752,
- "notes": "v0.10.0: (1) pe config — quản lý toàn bộ cấu hình ngay trong CLI (xem tổng quan + nguồn từng khoá, get/set kể cả theo project, edit mở đúng file config/context/lessons/rules, path); (2) pe sessions rm <id> — xoá phiên chat theo id; (3) toàn bộ text hiển thị chuyển sang tiếng Việt có dấu (giữ nguyên các token giao thức nội bộ); (4) README tiếng Anh. Repo fuco-cli đã public nên từ bản này pe update tải manifest thật được."
-}
+{"exeUrl":"https://drive.usercontent.google.com/download?id=1tQNXL9lDgTZWKqjR4XN9O3kWyWgCXbAt&export=download&confirm=t","notes":"v0.10.1: sửa lỗi pe update không tự thay file — bản đóng gói .exe bị nhận nhầm là 'đang chạy qua node' nên từ chối tự cập nhật (esbuild thay import.meta bằng {} làm hỏng phép kiểm tra SEA). Đã kiểm chứng trên bản đóng gói thật: tự tải, đối chiếu SHA256, tự thay file và giữ bản cũ thành pe.exe.old. LƯU Ý: bản 0.10.0 trở về trước vẫn phải chép tay bản này đè lên 1 lần cuối; từ 0.10.1 trở đi pe update tự thay file được.","sha256":"874f287e0abadb75efc4d59d48f1a29d26461f3d22b18e9990d4608817234679","size":94218752,"version":"0.10.1"}

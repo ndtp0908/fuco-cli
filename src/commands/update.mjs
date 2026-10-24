@@ -7,6 +7,7 @@ import { promises as fs } from 'node:fs';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
 import { loadConfig } from '../lib/config.mjs';
 import { VERSION, compareVersions } from '../lib/version.mjs';
 
@@ -14,7 +15,10 @@ export const DEFAULT_UPDATE_URL = 'https://raw.githubusercontent.com/ndtp0908/fu
 
 function isSea() {
   try {
-    const req = createRequire(import.meta.url);
+    // Neo createRequire vao duong dan file thuc thi thay vi import.meta.url:
+    // khi dong goi SEA, esbuild (CJS) thay import.meta bang {} nen .url la
+    // undefined, createRequire nem loi va ban .exe bi nhan nham la chay node.
+    const req = createRequire(pathToFileURL(process.execPath));
     return req('node:sea').isSea();
   } catch {
     return false;
