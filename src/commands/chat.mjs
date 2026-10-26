@@ -8,7 +8,7 @@ import { loadContextWithLessons, distillLessons, saveLesson, formatLessonForRevi
 import { chatCompletionStream, listModels, freeOnly, PeError } from '../lib/api.mjs';
 import { collectAttachments, expandMentions, buildUserContent, describeAttachments } from '../lib/attach.mjs';
 import { createToolRunner } from '../lib/tools.mjs';
-import { runAgent, AGENT_SYSTEM, shellNote, extractJsonToolCall } from '../lib/agent.mjs';
+import { runAgent, AGENT_SYSTEM, shellNote, extractJsonToolCalls, looksLikeToolJson } from '../lib/agent.mjs';
 import { restoreLatest, latestBackup } from '../lib/backup.mjs';
 import { createSession, saveSession, loadSession, latestSession, listSessions } from '../lib/session.mjs';
 import { maybeCompact, withSummary } from '../lib/compact.mjs';
@@ -82,6 +82,10 @@ export async function runChat(args = [], input = process.stdin, output = process
   // (y = luu, n = bo qua, all = luu het) — khong dung rl.question vi
   // xung dot voi vong for-await chuyen doc dong cua chat.
   let lessonReview = null;
+  // Luot truoc model DINH goi tool nhung JSON hong (runAgent da retry 1 lan
+  // van hong): luot tiep theo nhac model goi tool dung dinh dang ngay,
+  // dung lap lai plan — chi dung 1 luot roi tu xoa.
+  let planLoopNote = false;
 
   const rl = readline.createInterface({ input, output, prompt: 'pe> ' });
   let rlClosed = false;
@@ -129,13 +133,20 @@ export async function runChat(args = [], input = process.stdin, output = process
     s += `\n\n${currentTimeLine()}`;
     if (ctx) s += `\n\nNgữ cảnh project:\n${ctx.text}`;
     if (toolsOn) s += `\n\n${AGENT_SYSTEM}\n\n${shellNote()}`;
+    if (planLoopNote) {
+      planLoopNote = false;
+      s += '\n\nLưu ý: lượt trước bạn đã cố gọi tool bằng JSON nhưng sai định dạng nên không tool nào chạy được. Lượt này, nếu cần thao tác file/lệnh thì gọi tool đúng định dạng ngay (mỗi tool 1 khối ```json, trong chuỗi thì xuống dòng viết \\n, không dấu phẩy cuối), đừng chỉ lặp lại plan.';
+    }
     return s;
   };
 
   /**
    * Tra loi 1 luot:
-   * - toolsOn: stream truoc KHONG tools, giu dem — neu la loi goi tool dang JSON
-   *   thi chuyen sang vong lap agent; khong phai thi in truc tiep (streaming that).
+   * - toolsOn: stream theo DONG (chi in dong da hoan tat). Gap dong mo khoi
+   *   tool (``` fence hoac {"tool": ...) thi NGUNG IN tu day: neu het stream
+   *   ma dung la tool call thi chay agent (JSON khong bao gio hien ra
+   *   transcript); neu khong phai tool thi in not phan con lai. Prose
+   *   truoc khoi tool van stream binh thuong.
    * - tat tools: stream truc tiep.
    */
   async function replyTurn(signal) {
@@ -150,10 +161,12 @@ export async function runChat(args = [], input = process.stdin, output = process
         onToken: (t) => { buf += t; output.write(t); },
       });
       output.write('\n');
-      return { text: buf, incidents: [], stopped: null };
+      return { text: buf, incidents: [], stopped: null, steps: 0, brokenJson: false };
     }
     let buf = '';
-    let decided = false; // true = chac chan khong phai tool JSON -> da in truc tiep
+    let printed = 0; // so ky tu cua buf da in ra terminal
+    let suppressed = false; // da gap khoi tool -> ngung in tu day
+    const isToolBlockLine = (line) => /^\s*```/.test(line) || /^\s*\{\s*"tool"\s*:/.test(line);
     try {
       await chatCompletionStream(cfg, {
         model: currentModel,
@@ -162,18 +175,20 @@ export async function runChat(args = [], input = process.stdin, output = process
         web: webOn,
         onToken: (t) => {
           buf += t;
-          if (!decided) {
-            const head = buf.replace(/^\s+/, '');
-            if (head.length >= 24 || head.includes('\n')) {
-              if (head.startsWith('{') || head.startsWith('```')) {
-                // Co the la loi goi tool — giu im lang, doi het stream roi xu ly.
-              } else {
-                decided = true;
-                output.write(buf);
-              }
-            }
-          } else {
-            output.write(t);
+          if (suppressed) return;
+          // Chi xet cac dong da hoan tat (co \n) de khong cat doi fence.
+          const lastNL = buf.lastIndexOf('\n');
+          if (lastNL < printed) return;
+          const chunk = buf.slice(printed, lastNL + 1);
+          const lines = chunk.split('\n');
+          let upto = printed;
+          for (let li = 0; li < lines.length - 1; li++) {
+            if (isToolBlockLine(lines[li])) { suppressed = true; break; }
+            upto += lines[li].length + 1;
+          }
+          if (upto > printed) {
+            output.write(buf.slice(printed, upto));
+            printed = upto;
           }
         },
       });
@@ -183,16 +198,21 @@ export async function runChat(args = [], input = process.stdin, output = process
       const runner = createToolRunner({ root: process.cwd(), approval, confirm });
       const r = await runAgent({ cfg, model: currentModel, messages, runner, onEvent: agentEvent, signal, seen: agentSeen, web: webOn });
       console.log(r.text);
-      return { text: r.text, incidents: r.incidents || [], stopped: r.stopped };
+      return { text: r.text, incidents: r.incidents || [], stopped: r.stopped, steps: r.steps, brokenJson: !!r.brokenJson };
     }
-    if (decided) {
+    if (!suppressed) {
+      // In not dong cuoi dang do (chua co \n) neu co.
+      if (printed < buf.length) output.write(buf.slice(printed));
       output.write('\n');
-      return { text: buf, incidents: [], stopped: null };
+      return { text: buf, incidents: [], stopped: null, steps: 0, brokenJson: false };
     }
-    const jt = extractJsonToolCall(buf);
-    if (!jt) {
-      console.log(buf);
-      return { text: buf, incidents: [], stopped: null };
+    const jts = extractJsonToolCalls(buf);
+    if (!jts.length) {
+      // Khong phai tool (vd fence code trong cau tra loi thuong) — in not
+      // phan con lai, giu nguyen cau tra loi.
+      if (printed < buf.length) output.write(buf.slice(printed));
+      output.write('\n');
+      return { text: buf, incidents: [], stopped: null, steps: 0, brokenJson: looksLikeToolJson(buf).broken };
     }
     // La loi goi tool: chay vong lap agent, dung san cau tra loi dau lam buoc 1.
     const runner = createToolRunner({ root: process.cwd(), approval, confirm });
@@ -208,7 +228,7 @@ export async function runChat(args = [], input = process.stdin, output = process
       web: webOn,
     });
     console.log(r.text);
-    return { text: r.text, incidents: r.incidents || [], stopped: r.stopped };
+    return { text: r.text, incidents: r.incidents || [], stopped: r.stopped, steps: r.steps, brokenJson: !!r.brokenJson };
   }
 
   function agentEvent(type, data) {
@@ -394,6 +414,7 @@ export async function runChat(args = [], input = process.stdin, output = process
     turnAbort = new AbortController();
     try {
       const turn = await replyTurn(turnAbort.signal);
+      planLoopNote = !!turn.brokenJson;
       const text = turn.text;
       history[history.length - 1] = { role: 'user', content: shadow };
       history.push({ role: 'assistant', content: text });
