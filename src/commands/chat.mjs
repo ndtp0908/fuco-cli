@@ -200,12 +200,10 @@ export async function runChat(args = [], input = process.stdin, output = process
       console.log(r.text);
       return { text: r.text, incidents: r.incidents || [], stopped: r.stopped, steps: r.steps, brokenJson: !!r.brokenJson };
     }
-    if (!suppressed) {
-      // In not dong cuoi dang do (chua co \n) neu co.
-      if (printed < buf.length) output.write(buf.slice(printed));
-      output.write('\n');
-      return { text: buf, incidents: [], stopped: null, steps: 0, brokenJson: false };
-    }
+    // Sau stream: kiem tra tool-call tren TOAN BO buf, ke ca dong cuoi
+    // chua co \n. (0.12.2 chi xet dong da hoan tat trong luc stream nen
+    // JSON tran o dong cuoi bi in tho ra terminal + khong chay tool,
+    // va khong co log fail vi chua toi runAgent.)
     const jts = extractJsonToolCalls(buf);
     if (!jts.length) {
       // Khong phai tool (vd fence code trong cau tra loi thuong) — in not
